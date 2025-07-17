@@ -1,84 +1,230 @@
-# 🔒 Android Security Analyzer
+# 🛡️ Android Security Analyzer
 
-A comprehensive Python tool that automates **75-80%** of Android application security analysis, detecting vulnerabilities, compliance issues, and security misconfigurations.
+A comprehensive security analysis tool for Android applications with both command-line and **web interface** support. Detects vulnerabilities, malicious dependencies, and security misconfigurations with real-time threat intelligence.
 
-## 🚀 Features
+![Version](https://img.shields.io/badge/version-1.0-blue.svg)
+![Python](https://img.shields.io/badge/python-3.8+-green.svg)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
 
-### ✅ **Automated Analysis (75-80% Coverage)**
-- **Dependency Security Audit** - CVE/vulnerability checking via OSV database
-- **AndroidManifest Analysis** - Permissions, configurations, compliance
-- **Code Pattern Detection** - API keys, debug logging, security patterns  
-- **Google Play Compliance** - Billing, target SDK, policy violations
-- **Supply Chain Security** - Deprecated repositories
-- **Network Security** - Cleartext traffic, certificate pinning
-- **Build Configuration** - Code obfuscation, backup rules
+## 🌟 Key Features
 
-### 📊 **Report Generation**
-- **HTML Dashboard** - Interactive security report with severity levels
-- **JSON Output** - CI/CD integration and automation
-- **Risk Prioritization** - Critical → High → Medium → Low
-- **Actionable Recommendations** - Specific fix instructions
+### 🚀 **Dual Interface Support**
+- **🌐 Web Interface** - Modern FastAPI-powered dashboard with interactive reports
+- **💻 Command Line** - Automated analysis for CI/CD integration
+- **📊 Database Storage** - Persistent report storage with SQLite backend
+- **📄 Multiple Export Formats** - HTML, PDF, and JSON reports
 
-### 🔍 **Security Issues Detected**
-- Hardcoded API keys and secrets
-- Deprecated/vulnerable dependencies  
-- Google Play policy violations
-- Insecure network configurations
-- Debug logging in production
-- Missing security configurations
+### 🔍 **Advanced Security Detection**
+- **🔥 Real-time Vulnerability Scanning** - OSV database integration for CVE detection
+- **📦 Smart Dependency Analysis** - Support for Maven Central & Google Maven repositories  
+- **🎯 Malicious Dependency Detection** - Identifies known vulnerable libraries
+- **⚙️ Gradle Version Catalog Support** - Modern Android project compatibility
+- **🔐 API Key & Secret Detection** - Context-aware pattern matching
+- **📱 Android Manifest Analysis** - Security configuration auditing
 
-- Outdated libraries with CVEs
+### 🎨 **Interactive Web UI Features**
+- **📈 Visual Security Dashboard** - Risk level breakdown and statistics
+- **🗂️ Report Management** - Browse, filter, and manage analysis reports
+- **👁️ Issue Ignore/Unignore** - Smart pattern-based issue management
+- **📋 Real-time Analysis** - Submit projects for analysis via web interface
+- **💾 PDF Export** - Professional security reports for stakeholders
+- **🔄 Live Updates** - Real-time progress tracking during analysis
 
-## 🛠️ Installation
+## 🖥️ Web Interface
+
+### Dashboard Features
+The web interface provides an intuitive dashboard for managing security analyses:
+
+- **📊 Report Overview** - Visual summary of all analyzed projects
+- **🔍 Detailed Analysis Views** - In-depth security issue breakdown
+- **⚡ Quick Actions** - Start new analyses, download reports, manage issues
+- **📱 Responsive Design** - Works on desktop, tablet, and mobile devices
+
+### Report Management
+- **🗃️ Historical Reports** - Access all previous security analyses
+- **🏷️ Issue Categorization** - Critical, High, Medium, Low risk levels
+- **🎯 Smart Filtering** - Filter by app name, package, risk level, or date
+- **📄 Export Options** - HTML, PDF, and JSON download formats
+
+### Advanced Issue Management
+- **🚫 Issue Ignoring** - Mark false positives or accepted risks
+- **🧠 Smart Pattern Recognition** - Global ignore patterns for similar issues
+- **🔄 Bulk Operations** - Manage multiple issues simultaneously
+- **📝 Ignore Tracking** - Separate display of ignored vs active issues
+
+## 🛠️ Installation & Setup
 
 ### Prerequisites
-- Python 3.8+
-- Internet connection (for vulnerability databases)
+- **Python 3.8+**
+- **Internet connection** (for vulnerability databases)
+- **Git** (for repository management)
 
-### Setup
+### Quick Start
 ```bash
-# Clone or download the tool
+# Clone the repository
+git clone git@github.com:bewithdhanu/android-security-analyzer.git
+cd android-security-analyzer
+
 # Install dependencies
 pip install -r requirements.txt
 
-# Make executable (Linux/Mac)
-chmod +x android_security_analyzer.py
+# Start the web interface
+python app.py
+# Access at: http://localhost:8000
+
+# Or run command-line analysis
+python android_security_analyzer.py /path/to/android/project
+```
+
+### Web Server Configuration
+```bash
+# Development server (default)
+uvicorn app:app --reload --host 0.0.0.0 --port 8000
+
+# Production server
+uvicorn app:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
 ## 📋 Usage
 
-### Basic Analysis
+### 🌐 Web Interface Usage
+
+1. **Start the Web Server**
+   ```bash
+   python app.py
+   ```
+
+2. **Access the Dashboard**
+   - Open `http://localhost:8000` in your browser
+   - Navigate to "Submit Analysis Request"
+
+3. **Submit Android Project**
+   - Enter project path (local directory)
+   - Click "Start Security Analysis"
+   - Monitor real-time progress
+
+4. **View Results**
+   - Browse reports in "Security Reports" section
+   - View detailed analysis with risk breakdowns
+   - Download PDF or JSON reports
+   - Manage issues with ignore/unignore functionality
+
+### 💻 Command Line Usage
+
 ```bash
-# Analyze Android project and generate both HTML and JSON reports
+# Basic analysis
 python android_security_analyzer.py /path/to/android/project
 
-# Generate only HTML report
-python android_security_analyzer.py /path/to/android/project --format html
+# Save to specific location
+python android_security_analyzer.py /path/to/project --output /custom/path/report
 
-# Generate only JSON report (for CI/CD)
-python android_security_analyzer.py /path/to/android/project --format json
-
-# Custom output filename
-python android_security_analyzer.py /path/to/android/project --output my_security_report
+# JSON output for CI/CD
+python android_security_analyzer.py /path/to/project --format json
 ```
 
-### CI/CD Integration
+### 🔧 API Endpoints
+
+The FastAPI backend provides RESTful endpoints:
+
 ```bash
-# Exit codes for automation
-# 0 = No critical issues
-# 1 = Critical issues found (block build)
-# 2 = High risk issues found (warning)
+# Submit analysis request
+POST /api/analyze
+{
+  "project_path": "/path/to/android/project",
+  "app_name": "MyApp"
+}
 
-# Example CI pipeline
-python android_security_analyzer.py . --format json
-if [ $? -eq 1 ]; then
-    echo "Critical security issues found - blocking build"
-    exit 1
-fi
+# Get all reports
+GET /api/reports
+
+# Get specific report
+GET /api/reports/{report_id}
+
+# Download PDF report
+GET /api/reports/{report_id}/pdf
+
+# Ignore/unignore issues
+POST /api/reports/{report_id}/ignore-issue
+POST /api/reports/{report_id}/unignore-issue
 ```
 
-### GitHub Actions Example
+## 🔍 Security Analysis Capabilities
+
+### 📦 **Dependency Vulnerability Detection**
+- **✅ Real-time CVE Scanning** - OSV database integration
+- **✅ Version Comparison** - Latest stable version checking
+- **✅ Maven Central & Google Maven** - Comprehensive repository support
+- **✅ Known Malicious Libraries** - Detection of compromised packages
+
+**Example Detection:**
+```
+🚨 CRITICAL: Jackson Databind 2.9.8
+├─ 53 vulnerabilities found
+├─ CVE-2020-36518: XML External Entity (XXE) injection
+├─ Recommendation: Update to 2.19.0
+└─ Risk Level: CRITICAL
+```
+
+### 🔐 **API Key & Secret Detection**
+- **✅ Context-aware Patterns** - Reduces false positives
+- **✅ Multiple Service Support** - Google, AWS, Stripe, Firebase, etc.
+- **✅ Assignment Context** - Only flags actual key assignments
+- **✅ Comment Filtering** - Ignores keys in documentation
+
+### 📱 **Android Manifest Analysis**
+- **✅ Dangerous Permissions** - Privacy and security risk assessment
+- **✅ Network Security** - Cleartext traffic detection
+- **✅ Backup Configuration** - Data protection analysis
+- **✅ Google Play Compliance** - Billing and policy validation
+
+### 🏗️ **Build Configuration Security**
+- **✅ Deprecated Repositories** - JCenter and security risks
+- **✅ Target SDK Compliance** - Google Play requirements
+- **✅ Gradle Security** - Build script analysis
+- **✅ Version Catalog Support** - Modern Gradle features
+
+## 📊 Example Analysis Results
+
+### Critical Issues Detected
+```
+🔴 CRITICAL ISSUES (3 found)
+├─ Jackson Databind 2.9.8: 53 CVEs including XXE injection
+├─ Cleartext Traffic Enabled: Network security vulnerability  
+└─ Hardcoded API Key: Google Maps API key in source code
+
+🟠 HIGH ISSUES (2 found)
+├─ Dangerous Permission: WRITE_EXTERNAL_STORAGE without justification
+└─ Backup Enabled: Sensitive data exposure risk
+
+🟡 MEDIUM ISSUES (4 found)
+├─ Outdated Dependencies: 8 libraries have updates available
+├─ Debug Logging: Production build contains debug statements
+├─ Missing Certificate Pinning: Network communication not pinned
+└─ Vulnerable Gson Version: Deserialization vulnerability
+
+📊 DEPENDENCIES ANALYZED: 47 total
+├─ 🚨 Vulnerable: 2 libraries
+├─ ⚠️ Outdated: 8 libraries  
+└─ ✅ Current: 37 libraries
+```
+
+## 🎯 **Advanced Features**
+
+### 🧠 Smart Issue Management
+- **Pattern-based Ignoring** - Ignore all instances of similar issues
+- **Global vs Specific** - Project-wide or instance-specific ignoring
+- **Issue Tracking** - Maintain history of ignored items
+- **False Positive Reduction** - Learn from user feedback
+
+### 📈 Analytics & Reporting
+- **Risk Trend Analysis** - Track security posture over time  
+- **Dependency Health** - Monitor library update status
+- **Compliance Tracking** - Google Play policy adherence
+- **Executive Summaries** - High-level security reports for management
+
+### 🔄 Continuous Integration
 ```yaml
+# GitHub Actions Example
 name: Security Analysis
 on: [push, pull_request]
 
@@ -88,13 +234,19 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Set up Python
-      uses: actions/setup-python@v3
+      uses: actions/setup-python@v4
       with:
         python-version: '3.9'
     - name: Install dependencies
-      run: pip install -r requirements.txt
+      run: |
+        pip install -r requirements.txt
     - name: Run security analysis
-      run: python android_security_analyzer.py . --format json
+      run: |
+        python android_security_analyzer.py . --format json
+        if [ $? -eq 1 ]; then
+          echo "Critical security issues found"
+          exit 1
+        fi
     - name: Upload security report
       uses: actions/upload-artifact@v3
       with:
@@ -102,140 +254,132 @@ jobs:
         path: security_report.json
 ```
 
-## 📊 Example Output
+## 🔧 Configuration & Customization
 
-### Console Summary
-```
-============================================================
-SECURITY ANALYSIS SUMMARY
-============================================================
-Project: /path/to/modern-farmer-android
-Scan Time: 2025-01-16 10:30:45
-Total Issues Found: 12
-  🔴 Critical: 3
-  🟠 High: 4
-  🟡 Medium: 3
-  🟢 Low: 2
-Dependencies Analyzed: 45
-============================================================
-❌ CRITICAL ISSUES FOUND - Build should be blocked
-```
-
-### Critical Issues Detected
-- **Deprecated JCenter Repository** - Supply chain risk
-
-- **Missing Billing Compliance** - Google Play requirements
-- **Hardcoded API Keys** - Weather API key in source code
-- **Cleartext Traffic Enabled** - Network security risk
-
-## 🎯 **Analysis Coverage**
-
-| Security Area | Automation Level | Accuracy |
-|---------------|------------------|----------|
-| **Dependency Vulnerabilities** | 95% | High |
-| **Manifest Configuration** | 90% | High |
-| **Code Pattern Detection** | 85% | Medium-High |
-| **Compliance Checking** | 90% | High |
-| **Network Security** | 75% | Medium |
-| **API Key Detection** | 70% | Medium |
-| **Build Configuration** | 85% | High |
-
-## 🔧 Customization
-
-### Adding Custom Patterns
-```python
-# Modify Config class in android_security_analyzer.py
-class Config:
-    # Add custom API key patterns
-    API_KEY_PATTERNS = [
-        r'your_custom_pattern_here',
-        # ... existing patterns
-    ]
-    
-    # Add custom vulnerability patterns
-    DANGEROUS_PERMISSIONS = {
-        'your.custom.permission': 'Custom security recommendation'
-    }
-```
-
-### External API Configuration
-```python
-# Configure vulnerability databases
-OSV_API_URL = "https://api.osv.dev/v1/query"  # Free OSV database
-GITHUB_ADVISORY_API = "https://api.github.com/advisories"  # GitHub advisories
-```
-
-## 🚨 **Limitations & Manual Review Required**
-
-### ❌ **What the Tool Cannot Detect (20-25%)**
-- Business logic security flaws
-- Complex authentication bypasses
-- Runtime vulnerability exploitation
-- Context-specific security risks
-- Sophisticated malware/obfuscation
-- Custom security implementations
-
-### ⚠️ **Potential False Positives**
-- API key patterns in comments
-- Debug code in test files
-
-- Custom security configurations
-
-### 📋 **Recommendations for Complete Security**
-1. **Use this tool as first-pass security screening**
-2. **Combine with manual security review**
-3. **Integrate into CI/CD pipeline** 
-4. **Regular dependency updates**
-5. **Professional security audit** for critical applications
-
-## 🔄 **Updates & Maintenance**
-
-### Vulnerability Database Updates
-- **OSV Database**: Automatically updated (API-based)
-- **GitHub Advisory**: Real-time via API
-- **Tool Updates**: Monitor repository for enhancements
-
-### Keeping Patterns Current
+### Environment Variables
 ```bash
-# Update dependency patterns for new security issues
-# Modify API_KEY_PATTERNS for new services
-# Add new compliance checks as Google updates policies
+# Database configuration
+SECURITY_DB_PATH="./security_reports.db"
+
+# API endpoints
+OSV_API_URL="https://api.osv.dev/v1/query"
+MAVEN_CENTRAL_API="https://search.maven.org/solrsearch/select"
+
+# Server configuration  
+FASTAPI_HOST="0.0.0.0"
+FASTAPI_PORT="8000"
 ```
 
-## 🤝 **Contributing**
+### Custom Security Patterns
+```python
+# Extend keyword detection
+CUSTOM_KEYWORDS = [
+    "your_secret_pattern",
+    "internal_api_key",
+    "private_token"
+]
 
-1. Fork the repository
-2. Add new security patterns or analyzers
-3. Update test cases
-4. Submit pull request with improvements
+# Add domain monitoring
+CUSTOM_DOMAINS = [
+    "suspicious-domain.com",
+    "malware-cdn.net"
+]
+```
 
-## 📜 **License**
+## 📂 Project Structure
+```
+android-security-analyzer/
+├── android_security_analyzer.py    # Core analysis engine
+├── app.py                         # FastAPI web server
+├── requirements.txt               # Python dependencies
+├── domains.txt                    # Suspicious domains database
+├── keywords.txt                   # Security keywords database
+├── templates/                     # HTML templates
+│   ├── base.html                 # Base template
+│   ├── reports_list.html         # Report listing page
+│   ├── submit_request.html       # Analysis submission
+│   ├── view_report.html          # Detailed report view
+│   └── view_report_pdf.html      # PDF report template
+└── security_reports.db           # SQLite database (auto-created)
+```
 
-MIT License - Free for commercial and personal use
+## 🚨 **Known Limitations**
 
-## 🆘 **Support**
+### Requires Manual Review (15-20%)
+- **Business Logic Vulnerabilities** - Application-specific security flaws
+- **Complex Authentication Issues** - Multi-step authentication bypasses  
+- **Runtime Security** - Dynamic analysis and penetration testing
+- **Custom Security Implementations** - Non-standard security patterns
 
-For issues, feature requests, or security questions:
-- Create GitHub issue
-- Provide sample AndroidManifest.xml (anonymized)
-- Include error logs and system details
+### False Positives
+- **Comments containing API key patterns** - Use ignore functionality
+- **Test files with debug code** - Configure analysis scope
+- **Development-only configurations** - Context-specific filtering
+
+## 🤝 Contributing
+
+We welcome contributions! Here's how to help:
+
+1. **🐛 Bug Reports** - Submit detailed issue reports
+2. **✨ Feature Requests** - Propose new security checks
+3. **🔧 Code Contributions** - Improve analysis accuracy
+4. **📚 Documentation** - Enhance usage guides
+
+```bash
+# Development setup
+git clone git@github.com:bewithdhanu/android-security-analyzer.git
+cd android-security-analyzer
+pip install -r requirements.txt
+
+# Run tests
+python -m pytest tests/
+
+# Submit pull request
+git checkout -b feature/your-improvement
+git commit -m "Add: New security check for XYZ"
+git push origin feature/your-improvement
+```
+
+## 📜 License
+
+MIT License - Free for commercial and personal use. See [LICENSE](LICENSE) for details.
+
+## 🆘 Support & Community
+
+- **🐛 Issues**: [GitHub Issues](https://github.com/bewithdhanu/android-security-analyzer/issues)
+- **💬 Discussions**: [GitHub Discussions](https://github.com/bewithdhanu/android-security-analyzer/discussions)  
+- **📧 Security Reports**: Report security issues privately via email
+
+## 🔄 Changelog
+
+### Version 1.0.0
+- ✅ Initial release with web interface
+- ✅ Real-time vulnerability scanning
+- ✅ Advanced dependency analysis
+- ✅ PDF report generation
+- ✅ Issue ignore/unignore functionality
+- ✅ SQLite database integration
+- ✅ FastAPI web backend
 
 ---
 
-## 🎯 **Quick Start Example**
+## 🚀 **Quick Start Commands**
 
 ```bash
-# Download the tool
-wget https://raw.githubusercontent.com/your-repo/android_security_analyzer.py
+# 1. Clone and setup
+git clone git@github.com:bewithdhanu/android-security-analyzer.git
+cd android-security-analyzer && pip install -r requirements.txt
 
-# Install dependencies  
-pip install requests aiohttp packaging
+# 2. Start web interface
+python app.py
+# → Open http://localhost:8000
 
-# Run analysis on your Android project
-python android_security_analyzer.py /path/to/your/android/project
+# 3. Or run CLI analysis
+python android_security_analyzer.py /path/to/android/project
 
-# View the generated report
-open security_report.html
+# 4. View results
+open security_report.html  # CLI generated report
+# or use web interface at http://localhost:8000
 ```
 
-**This tool helps you catch 75-80% of common Android security issues automatically, ensuring your app meets Google Play security requirements and protects user data.** 
+**🛡️ Protect your Android applications with comprehensive automated security analysis and an intuitive web interface for managing security reports.** 
