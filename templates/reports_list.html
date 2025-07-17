@@ -1,0 +1,294 @@
+{% extends "base.html" %}
+
+{% block title %}Security Reports - Android Security Analyzer{% endblock %}
+
+{% block content %}
+<div class="space-y-4">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-2xl font-bold text-white">Security Reports</h1>
+            <p class="text-gray-400 text-sm">Manage and view Android security analysis reports</p>
+        </div>
+        <div class="flex items-center">
+            <a href="{{ url_for('submit_request_page') }}" class="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded text-sm font-medium flex items-center space-x-2 transition-colors">
+                <i class="fas fa-plus"></i>
+                <span>New Analysis</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Search and Filters -->
+    <div class="bg-gray-800 rounded-lg p-3 border border-gray-700">
+        <div class="flex items-center space-x-3">
+            <div class="relative flex-1">
+                <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-sm"></i>
+                <input 
+                    type="text" 
+                    id="search-input" 
+                    placeholder="Search reports by app name or package..." 
+                    class="w-full pl-8 pr-4 py-2 bg-gray-700 border border-gray-600 rounded text-sm text-white placeholder-gray-400 focus:outline-none focus:border-primary"
+                    onkeyup="filterReports()"
+                >
+            </div>
+        </div>
+    </div>
+
+    <!-- Reports Table -->
+    <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+        {% if reports %}
+        <div class="overflow-x-auto">
+            <table class="w-full" id="reports-table">
+                <thead class="bg-gray-700">
+                    <tr>
+                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">App</th>
+                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Details</th>
+                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Scan Time</th>
+                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Issues</th>
+                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Status</th>
+                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-700">
+                    {% for report in reports %}
+                    <tr class="table-row-hover" data-report-id="{{ report.id }}">
+                        <td class="px-3 py-3">
+                            <div class="flex items-center">
+                                {% if report.app_logo %}
+                                <img src="data:image/png;base64,{{ report.app_logo }}" alt="{{ report.app_name }}" class="w-8 h-8 rounded border border-gray-600">
+                                {% else %}
+                                <div class="w-8 h-8 bg-gray-700 rounded border border-gray-600 flex items-center justify-center">
+                                    <i class="fas fa-mobile-alt text-gray-400 text-sm"></i>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </td>
+                        <td class="px-3 py-3">
+                            <div class="space-y-1">
+                                <div class="font-medium text-white text-sm app-name">{{ report.app_name }}</div>
+                                <div class="text-xs text-gray-400 font-mono app-package">{{ report.package_name }}</div>
+                                <div class="text-xs text-primary">v{{ report.version }}</div>
+                            </div>
+                        </td>
+                        <td class="px-3 py-3">
+                            <div class="text-sm text-gray-300">{{ report.scan_time.strftime('%Y-%m-%d') }}</div>
+                            <div class="text-xs text-gray-400">{{ report.scan_time.strftime('%H:%M:%S') }}</div>
+                        </td>
+                        <td class="px-3 py-3">
+                            <div class="flex flex-wrap gap-1">
+                                {% if report.critical_issues > 0 %}
+                                <span class="bg-critical text-white px-2 py-1 rounded text-xs font-medium">{{ report.critical_issues }} Critical</span>
+                                {% endif %}
+                                {% if report.high_issues > 0 %}
+                                <span class="bg-high text-white px-2 py-1 rounded text-xs font-medium">{{ report.high_issues }} High</span>
+                                {% endif %}
+                                {% if report.medium_issues > 0 %}
+                                <span class="bg-medium text-white px-2 py-1 rounded text-xs font-medium">{{ report.medium_issues }} Medium</span>
+                                {% endif %}
+                                {% if report.low_issues > 0 %}
+                                <span class="bg-low text-white px-2 py-1 rounded text-xs font-medium">{{ report.low_issues }} Low</span>
+                                {% endif %}
+                                {% if report.total_issues == 0 %}
+                                <span class="bg-success text-white px-2 py-1 rounded text-xs font-medium">No Issues</span>
+                                {% endif %}
+                            </div>
+                            <div class="text-xs text-gray-400 mt-1">Total: {{ report.total_issues }}</div>
+                        </td>
+                        <td class="px-3 py-3">
+                            {% if report.status == 'completed' %}
+                            <span class="bg-success text-white px-2 py-1 rounded text-xs font-medium flex items-center space-x-1 w-fit">
+                                <i class="fas fa-check text-xs"></i>
+                                <span>Completed</span>
+                            </span>
+                            {% elif report.status == 'failed' %}
+                            <span class="bg-error text-white px-2 py-1 rounded text-xs font-medium flex items-center space-x-1 w-fit">
+                                <i class="fas fa-times text-xs"></i>
+                                <span>Failed</span>
+                            </span>
+                            {% elif report.status == 'in_progress' %}
+                            <span class="bg-warning text-white px-2 py-1 rounded text-xs font-medium flex items-center space-x-1 w-fit">
+                                <i class="fas fa-spinner animate-spin text-xs"></i>
+                                <span>In Progress</span>
+                            </span>
+                            {% else %}
+                            <span class="bg-gray-600 text-white px-2 py-1 rounded text-xs font-medium flex items-center space-x-1 w-fit">
+                                <i class="fas fa-clock text-xs"></i>
+                                <span>{{ report.status.title() }}</span>
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td class="px-3 py-3">
+                            <div class="flex items-center space-x-2">
+                                {% if report.status == 'completed' %}
+                                <a href="{{ url_for('view_report_page', report_id=report.id) }}" class="bg-primary hover:bg-primary-dark text-white px-3 py-2 rounded text-xs font-medium flex items-center space-x-2 transition-colors" title="View Report">
+                                    <i class="fas fa-eye"></i>
+                                    <span>View</span>
+                                </a>
+                                <button onclick="rerunAnalysis(this)" 
+                                        data-report-id="{{ report.id }}" 
+                                        data-project-path="{{ report.project_path }}"
+                                        class="bg-success hover:bg-green-600 text-white px-3 py-2 rounded text-xs font-medium flex items-center space-x-2 transition-colors" title="Rerun Analysis">
+                                    <i class="fas fa-sync-alt"></i>
+                                    <span>Rerun</span>
+                                </button>
+                                {% elif report.status == 'failed' %}
+                                <button onclick="rerunAnalysis(this)" 
+                                        data-report-id="{{ report.id }}" 
+                                        data-project-path="{{ report.project_path }}"
+                                        class="bg-warning hover:bg-yellow-600 text-white px-3 py-2 rounded text-xs font-medium flex items-center space-x-2 transition-colors" title="Retry Analysis">
+                                    <i class="fas fa-redo"></i>
+                                    <span>Retry</span>
+                                </button>
+                                {% endif %}
+                                <button onclick="deleteReport(this)" 
+                                        data-report-id="{{ report.id }}"
+                                        class="bg-error hover:bg-red-600 text-white px-3 py-2 rounded text-xs font-medium flex items-center space-x-2 transition-colors" title="Delete Report">
+                                    <i class="fas fa-trash"></i>
+                                    <span>Delete</span>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-12">
+            <i class="fas fa-inbox text-4xl text-gray-600 mb-4"></i>
+            <h3 class="text-lg font-medium text-gray-300 mb-2">No Security Reports Found</h3>
+            <p class="text-gray-400 mb-4">Get started by submitting your first Android security analysis.</p>
+            <a href="{{ url_for('submit_request_page') }}" class="inline-flex items-center space-x-2 bg-primary hover:bg-primary-dark text-white px-6 py-3 rounded-lg text-sm font-medium transition-colors">
+                <i class="fas fa-plus"></i>
+                <span>Submit First Analysis</span>
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div id="delete-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+    <div class="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4 border border-gray-700 shadow-2xl">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-medium text-white flex items-center space-x-2">
+                <i class="fas fa-exclamation-triangle text-error"></i>
+                <span>Confirm Deletion</span>
+            </h3>
+            <button onclick="closeDeleteModal()" class="text-gray-400 hover:text-white transition-colors">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <p class="text-gray-300 mb-4">Are you sure you want to delete this security report? This action cannot be undone.</p>
+        <div id="delete-report-preview" class="bg-gray-700 rounded p-3 mb-4"></div>
+        <div class="flex justify-end space-x-2">
+            <button onclick="closeDeleteModal()" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded text-sm font-medium transition-colors">Cancel</button>
+            <button onclick="confirmDelete()" class="bg-error hover:bg-red-600 text-white px-4 py-2 rounded text-sm font-medium flex items-center space-x-2 transition-colors">
+                <i class="fas fa-trash"></i>
+                <span>Delete Report</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+let reportToDelete = null;
+
+
+
+function filterReports() {
+    const searchTerm = document.getElementById('search-input').value.toLowerCase();
+    const table = document.getElementById('reports-table');
+    const rows = table.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
+    
+    for (let row of rows) {
+        const appName = row.querySelector('.app-name').textContent.toLowerCase();
+        const packageName = row.querySelector('.app-package').textContent.toLowerCase();
+        
+        if (appName.includes(searchTerm) || packageName.includes(searchTerm)) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    }
+}
+
+function rerunAnalysis(button) {
+    const reportId = button.dataset.reportId;
+    const projectPath = button.dataset.projectPath;
+    
+    const row = document.querySelector(`tr[data-report-id="${reportId}"]`);
+    const appName = row.querySelector('.app-name').textContent;
+    const packageName = row.querySelector('.app-package').textContent;
+    
+    if (confirm(`Rerun security analysis for ${appName} (${packageName})?\n\nThis will create a new report with updated results.`)) {
+        AppUtils.showLoading();
+        
+        AppUtils.apiRequest('/api/analyze', {
+            method: 'POST',
+            body: JSON.stringify({
+                project_path: projectPath,
+                app_name: appName
+            })
+        })
+        .then(data => {
+            AppUtils.showFlash('success', `Analysis completed successfully! Found ${data.total_issues} issues.`);
+            setTimeout(() => {
+                window.location.href = `/reports/${data.report_id}`;
+            }, 1500);
+        })
+        .catch(error => {
+            AppUtils.showFlash('error', 'Analysis failed: ' + error.message);
+        })
+        .finally(() => {
+            AppUtils.hideLoading();
+        });
+    }
+}
+
+function deleteReport(button) {
+    reportToDelete = button.dataset.reportId;
+    
+    const row = document.querySelector(`tr[data-report-id="${reportToDelete}"]`);
+    const appName = row.querySelector('.app-name').textContent;
+    const packageName = row.querySelector('.app-package').textContent;
+    const version = row.querySelector('.text-primary').textContent;
+    
+    document.getElementById('delete-report-preview').innerHTML = `
+        <div class="text-sm">
+            <div class="font-medium text-white">${appName}</div>
+            <div class="text-gray-400">${packageName} (${version})</div>
+        </div>
+    `;
+    
+    document.getElementById('delete-modal').classList.remove('hidden');
+}
+
+function closeDeleteModal() {
+    document.getElementById('delete-modal').classList.add('hidden');
+    reportToDelete = null;
+}
+
+async function confirmDelete() {
+    if (!reportToDelete) return;
+    
+    AppUtils.showLoading();
+    
+    try {
+        await fetch(`/api/reports/${reportToDelete}`, { method: 'DELETE' });
+        
+        const row = document.querySelector(`tr[data-report-id="${reportToDelete}"]`);
+        row.remove();
+        
+        AppUtils.showFlash('success', 'Report deleted successfully');
+        
+        setTimeout(() => window.location.reload(), 1000);
+    } catch (error) {
+        AppUtils.showFlash('error', 'Failed to delete report: ' + error.message);
+    } finally {
+        AppUtils.hideLoading();
+        closeDeleteModal();
+    }
+}
+</script>
+{% endblock %}

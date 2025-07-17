@@ -1,0 +1,311 @@
+{% extends "base.html" %}
+
+{% block title %}New Analysis - Android Security Analyzer{% endblock %}
+
+{% block content %}
+<div class="space-y-4">
+    <!-- Header -->
+    <div class="text-center">
+        <h1 class="text-2xl font-bold text-white mb-1">New Security Analysis</h1>
+        <p class="text-gray-400 text-sm">Submit an Android project for comprehensive security analysis</p>
+    </div>
+
+    <!-- Main Form -->
+    <div class="bg-gray-800 rounded-lg border border-gray-700 p-4">
+        <div class="mb-4">
+            <h2 class="text-lg font-medium text-white mb-1 flex items-center space-x-2">
+                <i class="fas fa-mobile-alt text-primary"></i>
+                <span>Project Information</span>
+            </h2>
+            <p class="text-gray-400 text-sm">Provide details about your Android project</p>
+        </div>
+        
+        <form id="analysis-form" method="POST" action="{{ url_for('submit_analysis') }}" class="space-y-4">
+            <div>
+                <label for="project-path" class="block text-sm font-medium text-gray-300 mb-1">
+                    <i class="fas fa-folder text-xs mr-1"></i>
+                    Project Path <span class="text-error">*</span>
+                </label>
+                <input 
+                    type="text" 
+                    id="project-path" 
+                    name="project_path" 
+                    placeholder="/path/to/android/project"
+                    value="{{ form_data.project_path if form_data else '' }}"
+                    required
+                    class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm text-white placeholder-gray-400 focus:outline-none focus:border-primary"
+                >
+                <div class="text-xs text-gray-400 mt-1">Absolute path to your Android project directory</div>
+                {% if errors and errors.project_path %}
+                <div class="text-xs text-error mt-1">{{ errors.project_path }}</div>
+                {% endif %}
+            </div>
+
+            <!-- Analysis Coverage -->
+            <div class="space-y-3">
+                <h3 class="text-lg font-medium text-white flex items-center space-x-2">
+                    <i class="fas fa-shield-alt text-primary"></i>
+                    <span>Security Analysis Coverage</span>
+                </h3>
+                <p class="text-sm text-gray-400">Our comprehensive analysis automatically includes:</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div class="flex items-center space-x-3 p-3 bg-gray-700 rounded border border-gray-600">
+                        <div class="bg-primary rounded-full w-10 h-10 flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-cubes text-white text-sm"></i>
+                        </div>
+                        <div class="flex-1">
+                            <div class="font-medium text-white">Dependency Analysis</div>
+                            <div class="text-xs text-gray-400 mt-1">Analyze third-party libraries for vulnerabilities</div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center space-x-3 p-3 bg-gray-700 rounded border border-gray-600">
+                        <div class="bg-primary rounded-full w-10 h-10 flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-key text-white text-sm"></i>
+                        </div>
+                        <div class="flex-1">
+                            <div class="font-medium text-white">Permission Analysis</div>
+                            <div class="text-xs text-gray-400 mt-1">Review dangerous permissions and privacy implications</div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center space-x-3 p-3 bg-gray-700 rounded border border-gray-600">
+                        <div class="bg-primary rounded-full w-10 h-10 flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-code text-white text-sm"></i>
+                        </div>
+                        <div class="flex-1">
+                            <div class="font-medium text-white">Code Pattern Analysis</div>
+                            <div class="text-xs text-gray-400 mt-1">Scan for insecure coding patterns</div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center space-x-3 p-3 bg-gray-700 rounded border border-gray-600">
+                        <div class="bg-primary rounded-full w-10 h-10 flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-file-alt text-white text-sm"></i>
+                        </div>
+                        <div class="flex-1">
+                            <div class="font-medium text-white">Manifest Analysis</div>
+                            <div class="text-xs text-gray-400 mt-1">Analyze AndroidManifest.xml for security issues</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Project Preview -->
+            <div id="project-preview" class="hidden">
+                <h3 class="text-lg font-medium text-white mb-2 flex items-center space-x-2">
+                    <i class="fas fa-eye text-primary"></i>
+                    <span>Project Preview</span>
+                </h3>
+                <div class="bg-gray-700 rounded p-3 border border-gray-600">
+                    <div id="preview-content"></div>
+                </div>
+            </div>
+
+            <!-- Submit Buttons -->
+            <div class="flex justify-between items-center pt-4">
+                <button type="button" onclick="validateProject()" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded text-sm font-medium flex items-center space-x-2 transition-colors">
+                    <i class="fas fa-search"></i>
+                    <span>Validate Project</span>
+                </button>
+                <button type="submit" id="submit-btn" class="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded text-sm font-medium flex items-center space-x-2 transition-colors">
+                    <i class="fas fa-play"></i>
+                    <span>Start Analysis</span>
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Analysis Progress -->
+    <div id="analysis-progress" class="bg-gray-800 rounded-lg border border-gray-700 p-4 hidden">
+        <div class="text-center mb-4">
+            <h3 class="text-lg font-medium text-white mb-1 flex items-center justify-center space-x-2">
+                <i class="fas fa-spinner animate-spin text-warning"></i>
+                <span>Analysis in Progress</span>
+            </h3>
+            <p class="text-gray-400 text-sm">Please wait while we analyze your Android project...</p>
+        </div>
+        <div class="w-full bg-gray-700 rounded-full h-2 mb-3">
+            <div id="progress-fill" class="bg-primary h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+        </div>
+        <div id="progress-status" class="text-center text-sm text-gray-400 italic">
+            Initializing analysis...
+        </div>
+    </div>
+
+    <!-- Recent Projects -->
+    <div class="bg-gray-800 rounded-lg border border-gray-700 p-4" style="display: none;">
+        <div class="mb-4">
+            <h2 class="text-lg font-medium text-white mb-1 flex items-center space-x-2">
+                <i class="fas fa-history text-primary"></i>
+                <span>Recent Projects</span>
+            </h2>
+            <p class="text-gray-400 text-sm">Quick access to previously analyzed projects</p>
+        </div>
+        {% if recent_projects %}
+        <div class="space-y-2">
+            {% for project in recent_projects %}
+            <div class="bg-gray-700 rounded p-3 cursor-pointer hover:bg-gray-600 transition-colors" onclick="selectRecentProject('{{ project.project_path }}', '{{ project.app_name }}')">
+                <div class="flex items-center justify-between">
+                    <div class="flex-1">
+                        <div class="font-medium text-white text-sm">{{ project.app_name }}</div>
+                        <div class="text-xs text-gray-400 font-mono">{{ project.project_path }}</div>
+                        <div class="text-xs text-gray-500 mt-1">{{ project.scan_time.strftime('%Y-%m-%d %H:%M') }}</div>
+                    </div>
+                    <div class="flex space-x-1">
+                        {% if project.critical_issues > 0 %}
+                        <span class="bg-critical text-white px-2 py-1 rounded text-xs">{{ project.critical_issues }}</span>
+                        {% endif %}
+                        {% if project.high_issues > 0 %}
+                        <span class="bg-high text-white px-2 py-1 rounded text-xs">{{ project.high_issues }}</span>
+                        {% endif %}
+                        {% if project.medium_issues > 0 %}
+                        <span class="bg-medium text-white px-2 py-1 rounded text-xs">{{ project.medium_issues }}</span>
+                        {% endif %}
+                        {% if project.low_issues > 0 %}
+                        <span class="bg-low text-white px-2 py-1 rounded text-xs">{{ project.low_issues }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-8">
+            <i class="fas fa-folder-open text-3xl text-gray-600 mb-2"></i>
+            <p class="text-gray-400">No recent projects found. Submit your first analysis above.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+document.getElementById('analysis-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const projectPath = formData.get('project_path');
+    
+    if (!projectPath.trim()) {
+        AppUtils.showFlash('error', 'Project path is required');
+        return;
+    }
+    
+    showAnalysisProgress();
+    
+    try {
+        const result = await AppUtils.apiRequest('/api/analyze', {
+            method: 'POST',
+            body: JSON.stringify({
+                project_path: projectPath
+            })
+        });
+        
+        updateProgress(100, 'Analysis completed successfully!');
+        
+        setTimeout(() => {
+            window.location.href = `/reports/${result.report_id}`;
+        }, 2000);
+        
+    } catch (error) {
+        hideAnalysisProgress();
+        AppUtils.showFlash('error', 'Analysis failed: ' + error.message);
+    }
+});
+
+async function validateProject() {
+    const projectPath = document.getElementById('project-path').value.trim();
+    
+    if (!projectPath) {
+        AppUtils.showFlash('error', 'Please enter a project path');
+        return;
+    }
+    
+    AppUtils.showLoading();
+    
+    try {
+        const result = await AppUtils.apiRequest('/api/validate-project', {
+            method: 'POST',
+            body: JSON.stringify({ project_path: projectPath })
+        });
+        
+        showProjectPreview(result);
+        AppUtils.showFlash('success', 'Project validation successful');
+    } catch (error) {
+        AppUtils.showFlash('error', 'Validation error: ' + error.message);
+    } finally {
+        AppUtils.hideLoading();
+    }
+}
+
+function showProjectPreview(projectInfo) {
+    const preview = document.getElementById('project-preview');
+    const content = document.getElementById('preview-content');
+    
+    content.innerHTML = `
+        <div class="grid grid-cols-2 gap-4 text-sm">
+            <div>
+                <span class="text-gray-400">Project Name:</span>
+                <div class="text-white font-medium">${projectInfo.app_name || 'Not detected'}</div>
+            </div>
+            <div>
+                <span class="text-gray-400">Package Name:</span>
+                <div class="text-white font-medium">${projectInfo.package_name || 'Not detected'}</div>
+            </div>
+            <div>
+                <span class="text-gray-400">Target SDK:</span>
+                <div class="text-white font-medium">${projectInfo.target_sdk || 'Not detected'}</div>
+            </div>
+            <div>
+                <span class="text-gray-400">AndroidManifest.xml:</span>
+                <div class="${projectInfo.has_manifest ? 'bg-success' : 'bg-error'} text-white px-2 py-1 rounded text-xs w-fit">
+                    ${projectInfo.has_manifest ? 'Found' : 'Not Found'}
+                </div>
+            </div>
+        </div>
+    `;
+    
+    preview.classList.remove('hidden');
+}
+
+function selectRecentProject(projectPath, appName) {
+    document.getElementById('project-path').value = projectPath;
+    
+    document.getElementById('analysis-form').scrollIntoView({ behavior: 'smooth' });
+}
+
+function showAnalysisProgress() {
+    document.getElementById('analysis-progress').classList.remove('hidden');
+    document.getElementById('submit-btn').disabled = true;
+    
+    let progress = 0;
+    const progressInterval = setInterval(() => {
+        progress += Math.random() * 10;
+        if (progress >= 90) {
+            clearInterval(progressInterval);
+            progress = 90;
+        }
+        updateProgress(progress, getProgressMessage(progress));
+    }, 1000);
+}
+
+function hideAnalysisProgress() {
+    document.getElementById('analysis-progress').classList.add('hidden');
+    document.getElementById('submit-btn').disabled = false;
+}
+
+function updateProgress(percent, message) {
+    document.getElementById('progress-fill').style.width = percent + '%';
+    document.getElementById('progress-status').textContent = message;
+}
+
+function getProgressMessage(progress) {
+    if (progress < 20) return 'Scanning project structure...';
+    if (progress < 40) return 'Analyzing AndroidManifest.xml...';
+    if (progress < 60) return 'Checking dependencies...';
+    if (progress < 80) return 'Scanning code patterns...';
+    if (progress < 95) return 'Generating report...';
+    return 'Finalizing analysis...';
+}
+</script>
+{% endblock %}

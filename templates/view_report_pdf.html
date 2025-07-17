@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Security Report - {{ report_data.app_metadata.app_name }}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: 11px;
+            line-height: 1.4;
+            color: #1f2937;
+            background: white;
+        }
+        
+        .container {
+            max-width: 100%;
+            margin: 0;
+            padding: 8px;
+        }
+        
+        /* Header */
+        .report-header {
+            text-align: center;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #374151;
+        }
+        
+        .report-header h1 {
+            font-size: 20px;
+            color: #111827;
+            margin-bottom: 4px;
+            font-weight: 700;
+        }
+        
+        .app-info {
+            font-size: 13px;
+            color: #4b5563;
+            margin-bottom: 2px;
+        }
+        
+        .scan-info {
+            font-size: 10px;
+            color: #6b7280;
+        }
+        
+        /* Executive Summary */
+        .executive-summary {
+            background: #f9fafb;
+            padding: 8px;
+            margin-bottom: 12px;
+            border-left: 3px solid #374151;
+            border-radius: 4px;
+        }
+        
+        .executive-summary h2 {
+            font-size: 14px;
+            color: #111827;
+            margin-bottom: 6px;
+            font-weight: 600;
+        }
+        
+        .summary-grid {
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+        }
+        
+        .summary-logo {
+            flex-shrink: 0;
+            margin-top: 4px;
+        }
+        
+        .summary-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .severity-stats {
+            display: flex;
+            justify-content: flex-start;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        
+        .stat-box {
+            text-align: center;
+            padding: 8px 12px;
+            background: white;
+            border-radius: 6px;
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            min-width: 60px;
+        }
+        
+        .stat-number {
+            font-size: 16px;
+            font-weight: 700;
+            display: block;
+            margin-bottom: 2px;
+        }
+        
+        .stat-label {
+            font-size: 9px;
+            color: #6b7280;
+            font-weight: 500;
+        }
+        
+        .critical-num { color: #dc2626; }
+        .high-num { color: #ea580c; }
+        .medium-num { color: #d97706; }
+        .low-num { color: #16a34a; }
+        
+        .summary-text {
+            font-size: 11px;
+            color: #374151;
+            line-height: 1.5;
+        }
+        
+        .summary-text p {
+            margin-bottom: 4px;
+        }
+        
+        .summary-text strong {
+            color: #111827;
+            font-weight: 600;
+        }
+        
+        /* App Details */
+        .app-details {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        
+        .detail-section {
+            background: #f9fafb;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #e5e7eb;
+        }
+        
+        .detail-section h3 {
+            font-size: 12px;
+            color: #111827;
+            margin-bottom: 6px;
+            font-weight: 600;
+            border-bottom: 1px solid #e5e7eb;
+            padding-bottom: 2px;
+        }
+        
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 3px;
+            font-size: 10px;
+        }
+        
+        .detail-label {
+            color: #6b7280;
+            font-weight: 500;
+        }
+        
+        .detail-value {
+            color: #111827;
+            font-weight: 400;
+            font-family: 'Courier New', monospace;
+        }
+        
+        /* Permissions */
+        .permissions-section {
+            margin-bottom: 12px;
+        }
+        
+        .permissions-section h2 {
+            font-size: 13px;
+            color: #111827;
+            margin-bottom: 6px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .permissions-list {
+            columns: 3;
+            column-gap: 12px;
+            font-size: 9px;
+            color: #374151;
+        }
+        
+        .permission-item {
+            break-inside: avoid;
+            padding: 2px 4px;
+            margin-bottom: 2px;
+            background: #f3f4f6;
+            border-radius: 2px;
+            font-family: 'Courier New', monospace;
+            border-left: 2px solid #9ca3af;
+        }
+        
+        /* Security Issues */
+        .security-issues {
+            margin-bottom: 12px;
+        }
+        
+        .security-issues h2 {
+            font-size: 13px;
+            color: #111827;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        
+        .category-section {
+            margin-bottom: 8px;
+            border: 1px solid #e5e7eb;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .category-header {
+            background: #f3f4f6;
+            padding: 6px 8px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .category-title {
+            font-size: 11px;
+            font-weight: 600;
+            color: #111827;
+            margin-bottom: 2px;
+        }
+        
+        .category-meta {
+            font-size: 9px;
+            color: #6b7280;
+        }
+        
+        .risk-level {
+            font-weight: 600;
+        }
+        
+        .risk-critical { color: #dc2626; }
+        .risk-high { color: #ea580c; }
+        .risk-medium { color: #d97706; }
+        .risk-low { color: #16a34a; }
+        
+        .issues-container {
+            padding: 6px 8px;
+        }
+        
+        .issue-item {
+            margin-bottom: 6px;
+            padding: 6px;
+            background: #fefefe;
+            border-left: 3px solid #e5e7eb;
+            border-radius: 0 3px 3px 0;
+            border: 1px solid #f3f4f6;
+        }
+        
+        .issue-item.critical { border-left-color: #dc2626; }
+        .issue-item.high { border-left-color: #ea580c; }
+        .issue-item.medium { border-left-color: #d97706; }
+        .issue-item.low { border-left-color: #16a34a; }
+        
+        .issue-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 4px;
+        }
+        
+        .issue-title {
+            font-size: 11px;
+            font-weight: 600;
+            color: #111827;
+            flex: 1;
+            margin-right: 8px;
+        }
+        
+        .severity-badge {
+            font-size: 8px;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-weight: 600;
+            color: white;
+            white-space: nowrap;
+        }
+        
+        .severity-critical { background: #dc2626; }
+        .severity-high { background: #ea580c; }
+        .severity-medium { background: #d97706; }
+        .severity-low { background: #16a34a; }
+        
+        .issue-description {
+            font-size: 10px;
+            color: #374151;
+            line-height: 1.4;
+            margin-bottom: 4px;
+        }
+        
+        .issue-location {
+            font-size: 9px;
+            color: #6b7280;
+            font-family: 'Courier New', monospace;
+            background: #f9fafb;
+            padding: 2px 4px;
+            border-radius: 2px;
+            margin-bottom: 4px;
+        }
+        
+        .issue-recommendation {
+            font-size: 9px;
+            color: #059669;
+            background: #ecfdf5;
+            padding: 3px 6px;
+            border-radius: 3px;
+            border-left: 2px solid #10b981;
+        }
+        
+        /* Dependencies */
+        .dependencies-section {
+            margin-bottom: 12px;
+        }
+        
+        .dependencies-section h2 {
+            font-size: 13px;
+            color: #111827;
+            margin-bottom: 6px;
+            font-weight: 600;
+        }
+        
+        .deps-summary {
+            font-size: 10px;
+            color: #6b7280;
+            margin-bottom: 8px;
+            padding: 4px 8px;
+            background: #f9fafb;
+            border-radius: 3px;
+        }
+        
+        .deps-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 4px;
+        }
+        
+        .dep-item {
+            padding: 6px;
+            background: #fefefe;
+            border-radius: 3px;
+            font-size: 9px;
+            border-left: 3px solid #e5e7eb;
+            border: 1px solid #f3f4f6;
+        }
+        
+        .dep-item.vulnerable { border-left-color: #dc2626; background: #fef2f2; }
+        .dep-item.outdated { border-left-color: #ea580c; background: #fff7ed; }
+        
+        .dep-name {
+            font-weight: 600;
+            color: #111827;
+            margin-bottom: 2px;
+            font-family: 'Courier New', monospace;
+            font-size: 8px;
+        }
+        
+        .dep-version {
+            color: #6b7280;
+            font-family: 'Courier New', monospace;
+            font-size: 8px;
+        }
+        
+        /* Recommendations */
+        .recommendations {
+            background: #f0fdf4;
+            padding: 8px;
+            border-left: 3px solid #16a34a;
+            margin-bottom: 12px;
+            border-radius: 4px;
+        }
+        
+        .recommendations h2 {
+            font-size: 13px;
+            color: #166534;
+            margin-bottom: 6px;
+            font-weight: 600;
+        }
+        
+        .recommendations ul {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .recommendations li {
+            font-size: 10px;
+            color: #166534;
+            margin-bottom: 3px;
+            padding-left: 12px;
+            position: relative;
+            line-height: 1.4;
+        }
+        
+        .recommendations li:before {
+            content: "•";
+            position: absolute;
+            left: 0;
+            color: #16a34a;
+            font-weight: 700;
+        }
+        
+        /* Footer */
+        .report-footer {
+            text-align: center;
+            padding-top: 12px;
+            border-top: 1px solid #e5e7eb;
+            font-size: 9px;
+            color: #6b7280;
+        }
+        
+        .report-footer p {
+            margin-bottom: 2px;
+        }
+        
+        /* Print optimizations */
+        @media print {
+            body {
+                font-size: 10px;
+            }
+            
+            .container {
+                padding: 4px;
+            }
+            
+            .category-section {
+                page-break-inside: avoid;
+                break-inside: avoid;
+            }
+            
+            .issue-item {
+                page-break-inside: avoid;
+                break-inside: avoid;
+            }
+            
+            .detail-section {
+                page-break-inside: avoid;
+                break-inside: avoid;
+            }
+            
+            .permissions-section {
+                page-break-inside: avoid;
+                break-inside: avoid;
+            }
+        }
+        
+        @page {
+            margin: 0.5in;
+            size: A4;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="report-header">
+            <h1>Android Security Analysis Report</h1>
+            <div class="app-info">
+                <strong>{{ report_data.app_metadata.app_name }}</strong> ({{ report_data.app_metadata.package_name }})
+            </div>
+            <div class="scan-info">
+                Version {{ report_data.app_metadata.version_name }} • Generated {{ report.scan_time.strftime('%Y-%m-%d at %H:%M') }}
+            </div>
+        </div>
+        
+        <!-- Executive Summary -->
+        <div class="executive-summary">
+            <h2>Executive Summary</h2>
+            <div class="summary-grid">
+                <div class="summary-content">
+                    <div class="severity-stats">
+                        <div class="stat-box">
+                            <span class="stat-number critical-num">{{ report_data.summary.by_severity.critical }}</span>
+                            <div class="stat-label">Critical</div>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-number high-num">{{ report_data.summary.by_severity.high }}</span>
+                            <div class="stat-label">High</div>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-number medium-num">{{ report_data.summary.by_severity.medium }}</span>
+                            <div class="stat-label">Medium</div>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-number low-num">{{ report_data.summary.by_severity.low }}</span>
+                            <div class="stat-label">Low</div>
+                        </div>
+                    </div>
+                    <div class="summary-text">
+                        <p><strong>{{ report_data.metadata.total_issues }}</strong> security issues identified across <strong>{{ report_data.metadata.total_categories }}</strong> categories.</p>
+                        <p>Application uses <strong>{{ report_data.dependencies.total_count }}</strong> dependencies and requests <strong>{{ report_data.app_metadata.permissions|length }}</strong> permissions.</p>
+                        {% if report_data.summary.by_severity.critical > 0 %}
+                        <p><strong>Immediate attention required</strong> for {{ report_data.summary.by_severity.critical }} critical security issues.</p>
+                        {% endif %}
+                    </div>
+                </div>
+                {% if report.app_logo %}
+                <div class="summary-logo">
+                    <img src="data:image/png;base64,{{ report.app_logo }}" alt="{{ report_data.app_metadata.app_name }}" style="width: 80px; height: 80px; border-radius: 12px; border: 3px solid #e5e7eb; box-shadow: 0 4px 8px rgba(0,0,0,0.15);">
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- App Details -->
+        <div class="app-details">
+            <div class="detail-section">
+                <h3>Application Info</h3>
+                <div class="detail-row">
+                    <span class="detail-label">Package:</span>
+                    <span class="detail-value">{{ report_data.app_metadata.package_name }}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Version:</span>
+                    <span class="detail-value">{{ report_data.app_metadata.version_name }}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Build:</span>
+                    <span class="detail-value">{{ report_data.app_metadata.version_code }}</span>
+                </div>
+            </div>
+            <div class="detail-section">
+                <h3>SDK Information</h3>
+                <div class="detail-row">
+                    <span class="detail-label">Target SDK:</span>
+                    <span class="detail-value">{{ report_data.app_metadata.target_sdk }}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Min SDK:</span>
+                    <span class="detail-value">{{ report_data.app_metadata.min_sdk }}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Permissions:</span>
+                    <span class="detail-value">{{ report_data.app_metadata.permissions|length }}</span>
+                </div>
+            </div>
+            <div class="detail-section">
+                <h3>Analysis Details</h3>
+                <div class="detail-row">
+                    <span class="detail-label">Analyzer:</span>
+                    <span class="detail-value">v{{ report_data.metadata.analyzer_version }}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Dependencies:</span>
+                    <span class="detail-value">{{ report_data.dependencies.total_count }}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Scan Time:</span>
+                    <span class="detail-value">{{ report.scan_time.strftime('%H:%M:%S') }}</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Permissions -->
+        <div class="permissions-section">
+            <h2>Application Permissions ({{ report_data.app_metadata.permissions|length }})</h2>
+            <div class="permissions-list">
+                {% for permission in report_data.app_metadata.permissions %}
+                <div class="permission-item">{{ permission }}</div>
+                {% endfor %}
+            </div>
+        </div>
+        
+        <!-- Security Issues -->
+        <div class="security-issues">
+            <h2>Security Issues by Category</h2>
+            {% for category in report_data.issues.categorized %}
+            <div class="category-section">
+                <div class="category-header">
+                    <div class="category-title">{{ category.category }}</div>
+                    <div class="category-meta">
+                        {{ category.issue_count }} issues • Risk Level: <span class="risk-level risk-{{ category.risk_level.lower() }}">{{ category.risk_level }}</span>
+                    </div>
+                </div>
+                <div class="issues-container">
+                    {% for issue in category.issues %}
+                    <div class="issue-item {{ issue.risk_level.lower() }}">
+                        <div class="issue-header">
+                            <div class="issue-title">{{ issue.title }}</div>
+                            <span class="severity-badge severity-{{ issue.risk_level.lower() }}">{{ issue.risk_level }}</span>
+                        </div>
+                        <div class="issue-description">{{ issue.description }}</div>
+                        {% if issue.file_path %}
+                        <div class="issue-location">
+                            {{ issue.file_path }}{% if issue.line_number %}:{{ issue.line_number }}{% endif %}
+                        </div>
+                        {% endif %}
+                        {% if issue.recommendation %}
+                        <div class="issue-recommendation">{{ issue.recommendation }}</div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        
+        <!-- Dependencies -->
+        <div class="dependencies-section">
+            <h2>Dependencies Analysis</h2>
+            <div class="deps-summary">
+                <strong>{{ report_data.dependencies.total_count }}</strong> total dependencies • 
+                Critical: <span class="critical-num">{{ report_data.dependencies.by_risk.critical }}</span> • 
+                High: <span class="high-num">{{ report_data.dependencies.by_risk.high }}</span> • 
+                Medium: <span class="medium-num">{{ report_data.dependencies.by_risk.medium }}</span> • 
+                Low: <span class="low-num">{{ report_data.dependencies.by_risk.low }}</span>
+            </div>
+            <div class="deps-grid">
+                {% for dep in report_data.dependencies.details %}
+                <div class="dep-item {% if dep.vulnerabilities %}vulnerable{% elif dep.is_outdated %}outdated{% endif %}">
+                    <div class="dep-name">{{ dep.artifact_id }}</div>
+                    <div class="dep-version">v{{ dep.version }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        
+        <!-- Recommendations -->
+        {% if report_data.recommendations.general %}
+        <div class="recommendations">
+            <h2>Security Recommendations</h2>
+            <ul>
+                {% for recommendation in report_data.recommendations.general %}
+                <li>{{ recommendation }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        
+        <!-- Footer -->
+        <div class="report-footer">
+            <p>Generated by Android Security Analyzer v{{ report_data.metadata.analyzer_version }}</p>
+            <p>Report contains {{ report_data.metadata.total_issues }} findings across {{ report_data.metadata.total_categories }} categories</p>
+            <p>This report is confidential and intended for authorized personnel only</p>
+        </div>
+    </div>
+</body>
+</html>
