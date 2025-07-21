@@ -319,6 +319,18 @@
             margin-bottom: 4px;
         }
         
+        .issue-code-snippet {
+            font-family: 'Courier New', monospace;
+            font-size: 8px;
+            background: #1f2937;
+            color: #f3f4f6;
+            padding: 4px 6px;
+            border-radius: 3px;
+            margin: 4px 0;
+            white-space: pre-wrap;
+            overflow-x: auto;
+        }
+        
         .issue-recommendation {
             font-size: 9px;
             color: #059669;
@@ -356,29 +368,60 @@
         }
         
         .dep-item {
-            padding: 6px;
+            padding: 8px;
             background: #fefefe;
             border-radius: 3px;
             font-size: 9px;
-            border-left: 3px solid #e5e7eb;
             border: 1px solid #f3f4f6;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
         }
         
-        .dep-item.vulnerable { border-left-color: #dc2626; background: #fef2f2; }
-        .dep-item.outdated { border-left-color: #ea580c; background: #fff7ed; }
+        .dep-item.vulnerable {
+            border-left: 3px solid #dc2626;
+            background: #fef2f2;
+        }
+        
+        .dep-item.outdated {
+            border-left: 3px solid #ea580c;
+            background: #fff7ed;
+        }
         
         .dep-name {
             font-weight: 600;
             color: #111827;
-            margin-bottom: 2px;
             font-family: 'Courier New', monospace;
             font-size: 8px;
         }
         
-        .dep-version {
+        .dep-group {
             color: #6b7280;
             font-family: 'Courier New', monospace;
+            font-size: 7px;
+        }
+        
+        .dep-version {
+            display: flex;
+            justify-content: space-between;
             font-size: 8px;
+            color: #374151;
+        }
+        
+        .dep-current {
+            color: #dc2626;
+        }
+        
+        .dep-latest {
+            color: #16a34a;
+        }
+        
+        .dep-vulns {
+            margin-top: 2px;
+            padding-top: 2px;
+            border-top: 1px dashed #e5e7eb;
+            font-size: 7px;
+            color: #dc2626;
         }
         
         /* Recommendations */
@@ -467,6 +510,46 @@
         @page {
             margin: 0.5in;
             size: A4;
+        }
+
+        /* Add section for code analysis findings */
+        .code-analysis {
+            margin: 12px 0;
+            page-break-inside: avoid;
+        }
+
+        .code-analysis h2 {
+            font-size: 13px;
+            color: #111827;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .code-block {
+            background: #1f2937;
+            padding: 8px;
+            border-radius: 4px;
+            margin: 4px 0;
+            overflow-x: auto;
+        }
+
+        .code-line {
+            font-family: 'Courier New', monospace;
+            font-size: 8px;
+            color: #f3f4f6;
+            white-space: pre;
+            line-height: 1.4;
+        }
+
+        .code-line-number {
+            color: #6b7280;
+            margin-right: 8px;
+            user-select: none;
+        }
+
+        .code-highlight {
+            background: rgba(220, 38, 38, 0.2);
+            border-left: 2px solid #dc2626;
         }
     </style>
 </head>
@@ -605,6 +688,9 @@
                             {{ issue.file_path }}{% if issue.line_number %}:{{ issue.line_number }}{% endif %}
                         </div>
                         {% endif %}
+                        {% if issue.code_snippet %}
+                        <div class="issue-code-snippet">{{ issue.code_snippet }}</div>
+                        {% endif %}
                         {% if issue.recommendation %}
                         <div class="issue-recommendation">{{ issue.recommendation }}</div>
                         {% endif %}
@@ -629,7 +715,18 @@
                 {% for dep in report_data.dependencies.details %}
                 <div class="dep-item {% if dep.vulnerabilities %}vulnerable{% elif dep.is_outdated %}outdated{% endif %}">
                     <div class="dep-name">{{ dep.artifact_id }}</div>
-                    <div class="dep-version">v{{ dep.version }}</div>
+                    <div class="dep-group">{{ dep.group_id }}</div>
+                    <div class="dep-version">
+                        <span class="dep-current">v{{ dep.version }}</span>
+                        {% if dep.latest_version %}
+                        <span class="dep-latest">→ v{{ dep.latest_version }}</span>
+                        {% endif %}
+                    </div>
+                    {% if dep.vulnerabilities %}
+                    <div class="dep-vulns">
+                        {{ dep.vulnerabilities|length }} vulnerabilities found
+                    </div>
+                    {% endif %}
                 </div>
                 {% endfor %}
             </div>
@@ -644,6 +741,37 @@
                 <li>{{ recommendation }}</li>
                 {% endfor %}
             </ul>
+        </div>
+        {% endif %}
+
+        <!-- Add Code Analysis Section -->
+        {% if report_data.issues.code_analysis %}
+        <div class="code-analysis">
+            <h2>Code Analysis Findings</h2>
+            {% for finding in report_data.issues.code_analysis %}
+            <div class="issue-item {{ finding.risk_level.lower() }}">
+                <div class="issue-header">
+                    <div class="issue-title">{{ finding.title }}</div>
+                    <span class="severity-badge severity-{{ finding.risk_level.lower() }}">{{ finding.risk_level }}</span>
+                </div>
+                <div class="issue-description">{{ finding.description }}</div>
+                {% if finding.file_path %}
+                <div class="issue-location">{{ finding.file_path }}:{{ finding.line_number }}</div>
+                {% endif %}
+                {% if finding.code_snippet %}
+                <div class="code-block">
+                    {% for line in finding.code_snippet.split('\n') %}
+                    <div class="code-line {% if loop.index0 == finding.line_number %}code-highlight{% endif %}">
+                        <span class="code-line-number">{{ loop.index }}</span>{{ line }}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% if finding.recommendation %}
+                <div class="issue-recommendation">{{ finding.recommendation }}</div>
+                {% endif %}
+            </div>
+            {% endfor %}
         </div>
         {% endif %}
         
