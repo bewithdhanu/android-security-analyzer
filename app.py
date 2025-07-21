@@ -216,7 +216,7 @@ async def compare_reports_page(request: Request):
         return templates.TemplateResponse("compare_reports.html", {
             "request": request,
             "reports": reports,
-            "active_page": "reports"
+            "active_page": "compare"
         })
     finally:
         db.close()

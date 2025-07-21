@@ -4,116 +4,143 @@
 
 {% block content %}
 <div class="space-y-4">
-    <!-- Header -->
-    <div class="text-center">
-        <h1 class="text-2xl font-bold text-white mb-1">Compare Security Reports</h1>
-        <p class="text-gray-400 text-sm">Compare security analysis results across multiple projects</p>
-    </div>
-
-    <!-- Report Selection -->
-    <div class="bg-gray-800 rounded-lg border border-gray-700 p-4">
-        <div class="mb-4">
-            <h2 class="text-lg font-medium text-white mb-1 flex items-center space-x-2">
-                <i class="fas fa-list-check text-primary"></i>
-                <span>Select Reports to Compare</span>
-            </h2>
-            <p class="text-gray-400 text-sm">Choose 2-10 reports to compare their security analysis results</p>
+    <!-- Selection View -->
+    <div id="selection-view" class="space-y-4">
+        <!-- Header -->
+        <div class="bg-gray-800 rounded-lg border border-gray-700 p-6">
+            <h1 class="text-2xl font-bold text-white mb-2">Compare Security Reports</h1>
+            <p class="text-gray-400">Compare security analysis results across multiple Android applications</p>
+            
+            <!-- Stats Bar -->
+            <div class="mt-4 grid grid-cols-3 gap-4">
+                <div class="bg-gray-700 rounded-lg p-4 text-center">
+                    <div class="text-2xl font-bold text-primary">{{ reports|length }}</div>
+                    <div class="text-sm text-gray-400">Total Reports</div>
+                </div>
+                <div class="bg-gray-700 rounded-lg p-4 text-center">
+                    <div class="text-2xl font-bold text-white" id="selected-count">0</div>
+                    <div class="text-sm text-gray-400">Selected</div>
+                </div>
+                <div class="bg-gray-700 rounded-lg p-4 text-center">
+                    <div class="text-2xl font-bold text-success">2-10</div>
+                    <div class="text-sm text-gray-400">Required Range</div>
+                </div>
+            </div>
         </div>
 
         <!-- Search and Filter -->
-        <div class="flex gap-4 mb-4">
-            <div class="flex-1">
-                <input 
-                    type="text" 
-                    id="search-reports" 
-                    placeholder="Search reports by app name or package..."
-                    class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm text-white placeholder-gray-400 focus:outline-none focus:border-primary"
-                    onkeyup="filterReports()"
-                >
-            </div>
-            <div class="flex items-center space-x-2">
-                <span class="text-gray-400 text-sm">Selected:</span>
-                <span id="selected-count" class="text-primary font-medium">0</span>
-            </div>
-        </div>
-
-        <!-- Report List -->
-        <div class="space-y-2 max-h-96 overflow-y-auto" id="report-list">
-            {% for report in reports %}
-            <div class="flex items-center bg-gray-700 rounded p-3 hover:bg-gray-600 transition-colors cursor-pointer report-item"
-                 onclick="toggleReportSelection(this, {{ report.id }})"
-                 data-report-id="{{ report.id }}"
-                 data-app-name="{{ report.app_name }}"
-                 data-package-name="{{ report.package_name }}"
-                 data-version="{{ report.version }}"
-                 data-scan-time="{{ report.scan_time.strftime('%Y-%m-%d %H:%M') }}"
-                 data-critical="{{ report.critical_issues }}"
-                 data-high="{{ report.high_issues }}"
-                 data-medium="{{ report.medium_issues }}"
-                 data-low="{{ report.low_issues }}"
-                 data-total="{{ report.total_issues }}">
-                
+        <div class="bg-gray-800 rounded-lg border border-gray-700 p-6">
+            <div class="flex items-center space-x-4 mb-6">
                 <div class="flex-1">
-                    <div class="flex items-center space-x-3">
-                        <div class="app-logo w-10 h-10 flex-shrink-0">
-                            {% if report.app_logo %}
-                            <img src="data:image/png;base64,{{ report.app_logo }}" alt="{{ report.app_name }}" class="w-full h-full rounded">
-                            {% else %}
-                            <div class="w-full h-full bg-gray-600 rounded flex items-center justify-center">
-                                <i class="fas fa-mobile-alt text-gray-400"></i>
+                    <div class="relative">
+                        <input 
+                            type="text" 
+                            id="search-reports" 
+                            placeholder="Search by app name, package name, or version..."
+                            class="w-full pl-10 pr-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-primary transition-colors"
+                            onkeyup="filterReports()"
+                        >
+                        <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                    </div>
+                </div>
+                <button 
+                    onclick="compareReports()" 
+                    id="compare-btn"
+                    disabled
+                    class="bg-primary hover:bg-blue-600 text-white px-6 py-3 rounded-lg text-sm font-medium flex items-center space-x-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    <i class="fas fa-code-compare"></i>
+                    <span>Compare Selected</span>
+                </button>
+            </div>
+
+            <!-- Grid View of Reports -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="report-list">
+                {% for report in reports %}
+                <div class="bg-gray-700 rounded-lg border border-gray-600 hover:border-primary transition-all duration-200 ease-in-out hover:-translate-y-0.5 hover:shadow-lg cursor-pointer report-item group"
+                     onclick="toggleReportSelection(this, {{ report.id }})"
+                     data-report-id="{{ report.id }}"
+                     data-app-name="{{ report.app_name }}"
+                     data-package-name="{{ report.package_name }}"
+                     data-version="{{ report.version }}"
+                     data-scan-time="{{ report.scan_time.strftime('%Y-%m-%d %H:%M') }}"
+                     data-critical="{{ report.critical_issues }}"
+                     data-high="{{ report.high_issues }}"
+                     data-medium="{{ report.medium_issues }}"
+                     data-low="{{ report.low_issues }}"
+                     data-total="{{ report.total_issues }}">
+                    
+                    <div class="p-4">
+                        <!-- App Info -->
+                        <div class="flex items-start space-x-3 mb-3">
+                            <div class="w-12 h-12 bg-gray-600 rounded-lg flex-shrink-0 flex items-center justify-center">
+                                {% if report.app_logo %}
+                                <img src="data:image/png;base64,{{ report.app_logo }}" alt="{{ report.app_name }}" class="w-full h-full rounded-lg">
+                                {% else %}
+                                <i class="fas fa-mobile-alt text-gray-400 text-xl"></i>
+                                {% endif %}
                             </div>
+                            <div class="flex-1 min-w-0">
+                                <h3 class="text-white font-medium truncate">{{ report.app_name }}</h3>
+                                <p class="text-gray-400 text-sm truncate">{{ report.package_name }}</p>
+                                <p class="text-gray-500 text-xs">v{{ report.version }}</p>
+                            </div>
+                            <div class="selection-indicator w-6 h-6 rounded-full border-2 border-primary flex items-center justify-center group-[.selected]:bg-primary">
+                                <i class="fas fa-check text-primary hidden group-[.selected]:block group-[.selected]:text-white"></i>
+                            </div>
+                        </div>
+
+                        <!-- Stats -->
+                        <div class="grid grid-cols-2 gap-2 mb-3">
+                            <div class="bg-gray-800 rounded p-2 text-center">
+                                <div class="text-sm text-gray-400">Issues</div>
+                                <div class="text-white font-medium">{{ report.total_issues }}</div>
+                            </div>
+                            <div class="bg-gray-800 rounded p-2 text-center">
+                                <div class="text-sm text-gray-400">Critical</div>
+                                <div class="text-critical font-medium">{{ report.critical_issues }}</div>
+                            </div>
+                        </div>
+
+                        <!-- Severity Bar -->
+                        <div class="h-1 rounded-full bg-gray-800 overflow-hidden">
+                            {% set total = report.total_issues %}
+                            {% if total > 0 %}
+                                {% if report.critical_issues > 0 %}
+                                <div class="h-full bg-critical" style="width: {{ (report.critical_issues/total*100)|round }}%; float: left;"></div>
+                                {% endif %}
+                                {% if report.high_issues > 0 %}
+                                <div class="h-full bg-high" style="width: {{ (report.high_issues/total*100)|round }}%; float: left;"></div>
+                                {% endif %}
+                                {% if report.medium_issues > 0 %}
+                                <div class="h-full bg-medium" style="width: {{ (report.medium_issues/total*100)|round }}%; float: left;"></div>
+                                {% endif %}
+                                {% if report.low_issues > 0 %}
+                                <div class="h-full bg-low" style="width: {{ (report.low_issues/total*100)|round }}%; float: left;"></div>
+                                {% endif %}
                             {% endif %}
                         </div>
-                        <div>
-                            <div class="font-medium text-white">{{ report.app_name }}</div>
-                            <div class="text-sm text-gray-400">{{ report.package_name }}</div>
-                            <div class="text-xs text-gray-500">v{{ report.version }} • {{ report.scan_time.strftime('%Y-%m-%d %H:%M') }}</div>
+
+                        <!-- Scan Time -->
+                        <div class="mt-3 text-xs text-gray-500 flex items-center">
+                            <i class="fas fa-clock mr-1"></i>
+                            {{ report.scan_time.strftime('%Y-%m-%d %H:%M') }}
                         </div>
                     </div>
                 </div>
-
-                <div class="flex items-center space-x-2">
-                    <div class="flex space-x-1">
-                        {% if report.critical_issues > 0 %}
-                        <span class="bg-critical text-white px-2 py-1 rounded text-xs">{{ report.critical_issues }}</span>
-                        {% endif %}
-                        {% if report.high_issues > 0 %}
-                        <span class="bg-high text-white px-2 py-1 rounded text-xs">{{ report.high_issues }}</span>
-                        {% endif %}
-                        {% if report.medium_issues > 0 %}
-                        <span class="bg-medium text-white px-2 py-1 rounded text-xs">{{ report.medium_issues }}</span>
-                        {% endif %}
-                        {% if report.low_issues > 0 %}
-                        <span class="bg-low text-white px-2 py-1 rounded text-xs">{{ report.low_issues }}</span>
-                        {% endif %}
-                    </div>
-                    <div class="w-6 h-6 rounded-full border-2 border-primary flex items-center justify-center selection-indicator">
-                        <i class="fas fa-check text-primary hidden"></i>
-                    </div>
-                </div>
+                {% endfor %}
             </div>
-            {% endfor %}
-        </div>
-
-        <!-- Compare Button -->
-        <div class="mt-4 flex justify-end">
-            <button 
-                onclick="compareReports()" 
-                id="compare-btn"
-                disabled
-                class="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded text-sm font-medium flex items-center space-x-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                <i class="fas fa-code-compare"></i>
-                <span>Compare Reports</span>
-            </button>
         </div>
     </div>
 
-    <!-- Replace the existing comparison table with this detailed view -->
+    <!-- Comparison Results View -->
     <div id="comparison-results" class="hidden space-y-4">
-        <!-- Refresh button -->
-        <div class="flex justify-end">
-            <button onclick="refreshComparison()" class="btn btn-secondary">
-                <i class="fas fa-sync-alt"></i> Refresh Comparison
+        <!-- Action Bar -->
+        <div class="bg-gray-800 rounded-lg border border-gray-700 p-4 flex items-center justify-between">
+            <button onclick="backToSelection()" class="btn-secondary">
+                <i class="fas fa-arrow-left mr-2"></i>Back to Selection
+            </button>
+            <button onclick="refreshComparison()" class="btn-primary">
+                <i class="fas fa-sync-alt mr-2"></i>Refresh Comparison
             </button>
         </div>
 
@@ -233,7 +260,9 @@
         </div>
     </div>
 </div>
+{% endblock %}
 
+{% block extra_scripts %}
 <script>
 let selectedReports = new Set();
 
@@ -296,8 +325,9 @@ function filterReports() {
     reports.forEach(report => {
         const appName = report.getAttribute('data-app-name').toLowerCase();
         const packageName = report.getAttribute('data-package-name').toLowerCase();
+        const version = report.getAttribute('data-version').toLowerCase();
         
-        if (appName.includes(searchTerm) || packageName.includes(searchTerm)) {
+        if (appName.includes(searchTerm) || packageName.includes(searchTerm) || version.includes(searchTerm)) {
             report.style.display = '';
         } else {
             report.style.display = 'none';
@@ -337,7 +367,7 @@ async function compareReports(skipUrlUpdate = false) {
         document.getElementById('comparison-results').classList.remove('hidden');
         
         // Hide the selection section when showing results
-        document.querySelector('.bg-gray-800:not(#comparison-results)').classList.add('hidden');
+        document.querySelector('#selection-view').classList.add('hidden');
         
         // Add a "Back to Selection" button if it doesn't exist
         let backButton = document.querySelector('#back-to-selection');
@@ -685,33 +715,41 @@ function displayPermissionAnalysis(reports) {
 function displayManifestAnalysis(reports) {
     const container = document.getElementById('manifest-analysis');
     container.innerHTML = reports.map(report => {
-        const manifestIssues = report.manifest_analysis || [];
+        // Get manifest issues from the correct path in the report data
+        const manifestIssues = report.issues?.categorized?.find(cat => 
+            cat.category === 'Manifest Analysis' || 
+            cat.category === 'Android Manifest'
+        )?.issues || [];
         
         return `
         <div class="bg-gray-700 rounded p-4">
             <div class="text-lg font-medium text-white mb-4">${report.app_metadata?.app_name || 'Unknown App'}</div>
             
             <div class="space-y-4">
-                ${manifestIssues.map(issue => `
+                ${manifestIssues.length > 0 ? manifestIssues.map(issue => `
                 <div class="bg-gray-800 rounded p-3">
-                    <div class="font-medium ${issue.risk_level === 'HIGH' ? 'text-error' : issue.risk_level === 'MEDIUM' ? 'text-warning' : 'text-low'}">
-                        ${issue.title}
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="font-medium text-${issue.risk_level.toLowerCase()}">
+                            ${issue.title}
+                        </div>
+                        <span class="px-2 py-1 rounded text-xs bg-${issue.risk_level.toLowerCase()} text-white">
+                            ${issue.risk_level}
+                        </span>
                     </div>
-                    <div class="text-gray-400 text-sm mt-1">${issue.description}</div>
+                    <div class="text-gray-400 text-sm mb-2">${issue.description}</div>
                     ${issue.recommendation ? `
-                    <div class="text-primary text-sm mt-2">
-                        <i class="fas fa-lightbulb mr-1"></i>
-                        ${issue.recommendation}
+                    <div class="text-primary text-sm mt-2 flex items-start">
+                        <i class="fas fa-lightbulb mt-1 mr-2"></i>
+                        <span>${issue.recommendation}</span>
                     </div>
                     ` : ''}
                 </div>
-                `).join('')}
-                
-                ${manifestIssues.length === 0 ? `
-                <div class="text-gray-400 text-center py-4">
-                    No manifest issues found
+                `).join('') : `
+                <div class="text-center py-4">
+                    <i class="fas fa-check-circle text-success text-2xl mb-2"></i>
+                    <p class="text-gray-400">No manifest issues found</p>
                 </div>
-                ` : ''}
+                `}
             </div>
         </div>
         `;
@@ -721,36 +759,54 @@ function displayManifestAnalysis(reports) {
 function displayCodeAnalysis(reports) {
     const container = document.getElementById('code-analysis');
     container.innerHTML = reports.map(report => {
-        const codeIssues = report.code_analysis || [];
+        // Get code issues from the correct path in the report data
+        const codeIssues = report.issues?.categorized?.filter(cat => 
+            cat.category === 'Code Analysis' || 
+            cat.category === 'Security Keywords' ||
+            cat.category === 'Suspicious Domains' ||
+            cat.category === 'API Keys and Secrets'
+        ).flatMap(cat => cat.issues) || [];
         
         return `
         <div class="bg-gray-700 rounded p-4">
             <div class="text-lg font-medium text-white mb-4">${report.app_metadata?.app_name || 'Unknown App'}</div>
             
             <div class="space-y-4">
-                ${codeIssues.map(issue => `
+                ${codeIssues.length > 0 ? codeIssues.map(issue => `
                 <div class="bg-gray-800 rounded p-3">
-                    <div class="font-medium ${issue.risk_level === 'HIGH' ? 'text-error' : issue.risk_level === 'MEDIUM' ? 'text-warning' : 'text-low'}">
-                        ${issue.title}
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="font-medium text-${issue.risk_level.toLowerCase()}">
+                            ${issue.title}
+                        </div>
+                        <span class="px-2 py-1 rounded text-xs bg-${issue.risk_level.toLowerCase()} text-white">
+                            ${issue.risk_level}
+                        </span>
                     </div>
-                    <div class="text-sm text-gray-400 mt-1">
-                        <span class="text-primary">${issue.file_path}</span>
-                        ${issue.line_number ? `<span class="text-gray-500">:${issue.line_number}</span>` : ''}
+                    ${issue.file_path ? `
+                    <div class="text-sm text-gray-400 mb-2 flex items-center">
+                        <i class="fas fa-file-code mr-2"></i>
+                        <span class="font-mono">${issue.file_path}${issue.line_number ? `:${issue.line_number}` : ''}</span>
                     </div>
-                    <div class="text-gray-400 text-sm mt-1">${issue.description}</div>
+                    ` : ''}
+                    <div class="text-gray-400 text-sm mb-2">${issue.description}</div>
                     ${issue.code_snippet ? `
-                    <div class="bg-gray-900 rounded p-2 mt-2 font-mono text-sm">
-                        ${issue.code_snippet}
+                    <div class="bg-gray-900 rounded p-2 mb-2 font-mono text-sm overflow-x-auto">
+                        <code>${issue.code_snippet}</code>
+                    </div>
+                    ` : ''}
+                    ${issue.recommendation ? `
+                    <div class="text-primary text-sm mt-2 flex items-start">
+                        <i class="fas fa-lightbulb mt-1 mr-2"></i>
+                        <span>${issue.recommendation}</span>
                     </div>
                     ` : ''}
                 </div>
-                `).join('')}
-                
-                ${codeIssues.length === 0 ? `
-                <div class="text-gray-400 text-center py-4">
-                    No code issues found
+                `).join('') : `
+                <div class="text-center py-4">
+                    <i class="fas fa-check-circle text-success text-2xl mb-2"></i>
+                    <p class="text-gray-400">No code issues found</p>
                 </div>
-                ` : ''}
+                `}
             </div>
         </div>
         `;
@@ -760,31 +816,89 @@ function displayCodeAnalysis(reports) {
 function displayGradleAnalysis(reports) {
     const container = document.getElementById('gradle-analysis');
     container.innerHTML = reports.map(report => {
-        const gradleIssues = report.gradle_analysis || [];
+        // Get Gradle issues from the correct path in the report data
+        const gradleIssues = report.issues?.categorized?.find(cat => 
+            cat.category === 'Gradle Analysis' || 
+            cat.category === 'Build Configuration'
+        )?.issues || [];
+        
+        // Get dependency issues
+        const dependencyIssues = report.dependencies?.details?.filter(dep => 
+            dep.is_outdated || (dep.vulnerabilities && dep.vulnerabilities.length > 0)
+        ) || [];
         
         return `
         <div class="bg-gray-700 rounded p-4">
             <div class="text-lg font-medium text-white mb-4">${report.app_metadata?.app_name || 'Unknown App'}</div>
             
+            <!-- Configuration Issues -->
             <div class="space-y-4">
-                ${gradleIssues.map(issue => `
-                <div class="bg-gray-800 rounded p-3">
-                    <div class="font-medium ${issue.risk_level === 'HIGH' ? 'text-error' : issue.risk_level === 'MEDIUM' ? 'text-warning' : 'text-low'}">
-                        ${issue.title}
+                ${gradleIssues.length > 0 ? `
+                <div class="mb-6">
+                    <h4 class="text-white font-medium mb-3">Configuration Issues</h4>
+                    ${gradleIssues.map(issue => `
+                    <div class="bg-gray-800 rounded p-3 mb-3">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="font-medium text-${issue.risk_level.toLowerCase()}">
+                                ${issue.title}
+                            </div>
+                            <span class="px-2 py-1 rounded text-xs bg-${issue.risk_level.toLowerCase()} text-white">
+                                ${issue.risk_level}
+                            </span>
+                        </div>
+                        <div class="text-gray-400 text-sm mb-2">${issue.description}</div>
+                        ${issue.recommendation ? `
+                        <div class="text-primary text-sm mt-2 flex items-start">
+                            <i class="fas fa-lightbulb mt-1 mr-2"></i>
+                            <span>${issue.recommendation}</span>
+                        </div>
+                        ` : ''}
                     </div>
-                    <div class="text-gray-400 text-sm mt-1">${issue.description}</div>
-                    ${issue.recommendation ? `
-                    <div class="text-primary text-sm mt-2">
-                        <i class="fas fa-lightbulb mr-1"></i>
-                        ${issue.recommendation}
-                    </div>
-                    ` : ''}
+                    `).join('')}
                 </div>
-                `).join('')}
-                
-                ${gradleIssues.length === 0 ? `
-                <div class="text-gray-400 text-center py-4">
-                    No Gradle configuration issues found
+                ` : ''}
+
+                <!-- Dependency Issues -->
+                ${dependencyIssues.length > 0 ? `
+                <div>
+                    <h4 class="text-white font-medium mb-3">Dependency Issues</h4>
+                    ${dependencyIssues.map(dep => `
+                    <div class="bg-gray-800 rounded p-3 mb-3">
+                        <div class="font-medium text-white mb-2">${dep.group_id}:${dep.artifact_id}</div>
+                        <div class="grid grid-cols-2 gap-2 text-sm">
+                            <div>
+                                <span class="text-gray-400">Current:</span>
+                                <span class="text-white">${dep.version}</span>
+                            </div>
+                            ${dep.latest_version ? `
+                            <div>
+                                <span class="text-gray-400">Latest:</span>
+                                <span class="text-warning">${dep.latest_version}</span>
+                            </div>
+                            ` : ''}
+                        </div>
+                        ${dep.vulnerabilities && dep.vulnerabilities.length > 0 ? `
+                        <div class="mt-2">
+                            <div class="text-error text-sm mb-1">Vulnerabilities:</div>
+                            <div class="space-y-1">
+                                ${dep.vulnerabilities.map(vuln => `
+                                <div class="text-xs">
+                                    <span class="text-error">${vuln.id}</span>
+                                    ${vuln.description ? `- <span class="text-gray-400">${vuln.description}</span>` : ''}
+                                </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                        ` : ''}
+                    </div>
+                    `).join('')}
+                </div>
+                ` : ''}
+
+                ${gradleIssues.length === 0 && dependencyIssues.length === 0 ? `
+                <div class="text-center py-4">
+                    <i class="fas fa-check-circle text-success text-2xl mb-2"></i>
+                    <p class="text-gray-400">No Gradle or dependency issues found</p>
                 </div>
                 ` : ''}
             </div>
@@ -814,7 +928,7 @@ function calculateSecurityScore(report) {
 
 function backToSelection() {
     // Show selection section
-    document.querySelector('.bg-gray-800:not(#comparison-results)').classList.remove('hidden');
+    document.querySelector('#selection-view').classList.remove('hidden');
     // Hide results and back button
     document.getElementById('comparison-results').classList.add('hidden');
     document.getElementById('back-to-selection').remove();
