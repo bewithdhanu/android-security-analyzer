@@ -1842,13 +1842,79 @@ class ComplianceChecker:
                 target_sdk = int(target_sdk_match.group(1))
                 break
         
-        if target_sdk and target_sdk < 34:
+        if target_sdk:
+            # Check against latest Google Play requirements
+            current_year = datetime.now().year
+            current_month = datetime.now().month
+            
+            # After August 31, 2025: Must target Android 15 (API 35) or higher
+            if current_year > 2025 or (current_year == 2025 and current_month > 8):
+                if target_sdk < 35:
+                    issues.append(SecurityIssue(
+                        title="Non-Compliant Target SDK",
+                        description=f"Target SDK {target_sdk} does not meet Google Play requirements. Starting August 31, 2025, apps must target Android 15 (API 35) or higher.",
+                        risk_level=Config.CRITICAL,
+                        category="Compliance",
+                        recommendation="Update targetSdk to 35 (Android 15) or higher to comply with Google Play requirements"
+                    ))
+            # After August 31, 2024: Must target Android 14 (API 34) or higher
+            elif current_year > 2024 or (current_year == 2024 and current_month > 8):
+                if target_sdk < 34:
+                    issues.append(SecurityIssue(
+                        title="Non-Compliant Target SDK",
+                        description=f"Target SDK {target_sdk} does not meet Google Play requirements. Starting August 31, 2024, apps must target Android 14 (API 34) or higher.",
+                        risk_level=Config.CRITICAL,
+                        category="Compliance",
+                        recommendation="Update targetSdk to 34 (Android 14) or higher to comply with Google Play requirements"
+                    ))
+            # Current recommendation
+            elif target_sdk < 34:
+                issues.append(SecurityIssue(
+                    title="Outdated Target SDK",
+                    description=f"Target SDK {target_sdk} is below current recommendations. Google Play will require Android 14 (API 34) by August 31, 2024, and Android 15 (API 35) by August 31, 2025.",
+                    risk_level=Config.HIGH,
+                    category="Compliance",
+                    recommendation="Consider updating targetSdk to at least 34 (Android 14) to prepare for upcoming Google Play requirements"
+                ))
+            
+            # Check for specific platform requirements
+            if 'com.google.android.wear' in gradle_content:  # Wear OS app
+                if current_year > 2025 or (current_year == 2025 and current_month > 8):
+                    if target_sdk < 34:
+                        issues.append(SecurityIssue(
+                            title="Non-Compliant Wear OS Target SDK",
+                            description=f"Wear OS apps must target Android 14 (API 34) or higher by August 31, 2025.",
+                            risk_level=Config.CRITICAL,
+                            category="Compliance",
+                            recommendation="Update targetSdk to 34 (Android 14) or higher for Wear OS compliance"
+                        ))
+            elif 'android.software.leanback' in gradle_content:  # Android TV app
+                if current_year > 2025 or (current_year == 2025 and current_month > 8):
+                    if target_sdk < 34:
+                        issues.append(SecurityIssue(
+                            title="Non-Compliant Android TV Target SDK",
+                            description=f"Android TV apps must target Android 14 (API 34) or higher by August 31, 2025.",
+                            risk_level=Config.CRITICAL,
+                            category="Compliance",
+                            recommendation="Update targetSdk to 34 (Android 14) or higher for Android TV compliance"
+                        ))
+            elif 'android.hardware.type.automotive' in gradle_content:  # Android Automotive app
+                if current_year > 2025 or (current_year == 2025 and current_month > 8):
+                    if target_sdk < 34:
+                        issues.append(SecurityIssue(
+                            title="Non-Compliant Android Automotive Target SDK",
+                            description=f"Android Automotive apps must target Android 14 (API 34) or higher by August 31, 2025.",
+                            risk_level=Config.CRITICAL,
+                            category="Compliance",
+                            recommendation="Update targetSdk to 34 (Android 14) or higher for Android Automotive compliance"
+                        ))
+        else:
             issues.append(SecurityIssue(
-                title="Outdated Target SDK",
-                description=f"Target SDK {target_sdk} is below current requirements",
-                risk_level=Config.MEDIUM,
+                title="Missing Target SDK",
+                description="Could not find target SDK version in Gradle configuration",
+                risk_level=Config.HIGH,
                 category="Compliance",
-                recommendation="Update target SDK to 34 (Android 14) or higher"
+                recommendation="Specify targetSdk in your build.gradle file"
             ))
         
         return issues
