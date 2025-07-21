@@ -1,0 +1,834 @@
+{% extends "base.html" %}
+
+{% block title %}Compare Reports - Android Security Analyzer{% endblock %}
+
+{% block content %}
+<div class="space-y-4">
+    <!-- Header -->
+    <div class="text-center">
+        <h1 class="text-2xl font-bold text-white mb-1">Compare Security Reports</h1>
+        <p class="text-gray-400 text-sm">Compare security analysis results across multiple projects</p>
+    </div>
+
+    <!-- Report Selection -->
+    <div class="bg-gray-800 rounded-lg border border-gray-700 p-4">
+        <div class="mb-4">
+            <h2 class="text-lg font-medium text-white mb-1 flex items-center space-x-2">
+                <i class="fas fa-list-check text-primary"></i>
+                <span>Select Reports to Compare</span>
+            </h2>
+            <p class="text-gray-400 text-sm">Choose 2-10 reports to compare their security analysis results</p>
+        </div>
+
+        <!-- Search and Filter -->
+        <div class="flex gap-4 mb-4">
+            <div class="flex-1">
+                <input 
+                    type="text" 
+                    id="search-reports" 
+                    placeholder="Search reports by app name or package..."
+                    class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm text-white placeholder-gray-400 focus:outline-none focus:border-primary"
+                    onkeyup="filterReports()"
+                >
+            </div>
+            <div class="flex items-center space-x-2">
+                <span class="text-gray-400 text-sm">Selected:</span>
+                <span id="selected-count" class="text-primary font-medium">0</span>
+            </div>
+        </div>
+
+        <!-- Report List -->
+        <div class="space-y-2 max-h-96 overflow-y-auto" id="report-list">
+            {% for report in reports %}
+            <div class="flex items-center bg-gray-700 rounded p-3 hover:bg-gray-600 transition-colors cursor-pointer report-item"
+                 onclick="toggleReportSelection(this, {{ report.id }})"
+                 data-report-id="{{ report.id }}"
+                 data-app-name="{{ report.app_name }}"
+                 data-package-name="{{ report.package_name }}"
+                 data-version="{{ report.version }}"
+                 data-scan-time="{{ report.scan_time.strftime('%Y-%m-%d %H:%M') }}"
+                 data-critical="{{ report.critical_issues }}"
+                 data-high="{{ report.high_issues }}"
+                 data-medium="{{ report.medium_issues }}"
+                 data-low="{{ report.low_issues }}"
+                 data-total="{{ report.total_issues }}">
+                
+                <div class="flex-1">
+                    <div class="flex items-center space-x-3">
+                        <div class="app-logo w-10 h-10 flex-shrink-0">
+                            {% if report.app_logo %}
+                            <img src="data:image/png;base64,{{ report.app_logo }}" alt="{{ report.app_name }}" class="w-full h-full rounded">
+                            {% else %}
+                            <div class="w-full h-full bg-gray-600 rounded flex items-center justify-center">
+                                <i class="fas fa-mobile-alt text-gray-400"></i>
+                            </div>
+                            {% endif %}
+                        </div>
+                        <div>
+                            <div class="font-medium text-white">{{ report.app_name }}</div>
+                            <div class="text-sm text-gray-400">{{ report.package_name }}</div>
+                            <div class="text-xs text-gray-500">v{{ report.version }} • {{ report.scan_time.strftime('%Y-%m-%d %H:%M') }}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex items-center space-x-2">
+                    <div class="flex space-x-1">
+                        {% if report.critical_issues > 0 %}
+                        <span class="bg-critical text-white px-2 py-1 rounded text-xs">{{ report.critical_issues }}</span>
+                        {% endif %}
+                        {% if report.high_issues > 0 %}
+                        <span class="bg-high text-white px-2 py-1 rounded text-xs">{{ report.high_issues }}</span>
+                        {% endif %}
+                        {% if report.medium_issues > 0 %}
+                        <span class="bg-medium text-white px-2 py-1 rounded text-xs">{{ report.medium_issues }}</span>
+                        {% endif %}
+                        {% if report.low_issues > 0 %}
+                        <span class="bg-low text-white px-2 py-1 rounded text-xs">{{ report.low_issues }}</span>
+                        {% endif %}
+                    </div>
+                    <div class="w-6 h-6 rounded-full border-2 border-primary flex items-center justify-center selection-indicator">
+                        <i class="fas fa-check text-primary hidden"></i>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Compare Button -->
+        <div class="mt-4 flex justify-end">
+            <button 
+                onclick="compareReports()" 
+                id="compare-btn"
+                disabled
+                class="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded text-sm font-medium flex items-center space-x-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                <i class="fas fa-code-compare"></i>
+                <span>Compare Reports</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Replace the existing comparison table with this detailed view -->
+    <div id="comparison-results" class="hidden space-y-4">
+        <!-- Refresh button -->
+        <div class="flex justify-end">
+            <button onclick="refreshComparison()" class="btn btn-secondary">
+                <i class="fas fa-sync-alt"></i> Refresh Comparison
+            </button>
+        </div>
+
+        <!-- Summary Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="bg-gray-800 rounded-lg border border-gray-700 p-4">
+                <h3 class="text-lg font-medium text-white mb-2 flex items-center space-x-2">
+                    <i class="fas fa-shield-alt text-primary"></i>
+                    <span>Security Score</span>
+                </h3>
+                <div id="security-scores" class="space-y-2"></div>
+            </div>
+
+            <div class="bg-gray-800 rounded-lg border border-gray-700 p-4">
+                <h3 class="text-lg font-medium text-white mb-2 flex items-center space-x-2">
+                    <i class="fas fa-bug text-primary"></i>
+                    <span>Issue Distribution</span>
+                </h3>
+                <div id="issue-distribution" class="space-y-2"></div>
+            </div>
+
+            <div class="bg-gray-800 rounded-lg border border-gray-700 p-4">
+                <h3 class="text-lg font-medium text-white mb-2 flex items-center space-x-2">
+                    <i class="fas fa-cubes text-primary"></i>
+                    <span>Dependencies</span>
+                </h3>
+                <div id="dependency-stats" class="space-y-2"></div>
+            </div>
+
+            <div class="bg-gray-800 rounded-lg border border-gray-700 p-4">
+                <h3 class="text-lg font-medium text-white mb-2 flex items-center space-x-2">
+                    <i class="fas fa-key text-primary"></i>
+                    <span>Permissions</span>
+                </h3>
+                <div id="permission-stats" class="space-y-2"></div>
+            </div>
+        </div>
+
+        <!-- Detailed Comparison Sections -->
+        <div class="space-y-6" id="detailed-comparison">
+            <!-- Application Overview -->
+            <div class="bg-gray-800 rounded-lg border border-gray-700 p-4">
+                <h3 class="text-lg font-medium text-white mb-4 flex items-center space-x-2">
+                    <i class="fas fa-info-circle text-primary"></i>
+                    <span>Application Overview</span>
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="app-overview">
+                    <!-- Will be populated by JavaScript -->
+                </div>
+            </div>
+
+            <!-- Security Score Analysis -->
+            <div class="bg-gray-800 rounded-lg border border-gray-700 p-4">
+                <h3 class="text-lg font-medium text-white mb-4 flex items-center space-x-2">
+                    <i class="fas fa-shield-alt text-primary"></i>
+                    <span>Security Score Analysis</span>
+                </h3>
+                <div class="space-y-4" id="security-analysis">
+                    <!-- Will be populated by JavaScript -->
+                </div>
+            </div>
+
+            <!-- Dependency Analysis -->
+            <div class="bg-gray-800 rounded-lg border border-gray-700 p-4">
+                <h3 class="text-lg font-medium text-white mb-4 flex items-center space-x-2">
+                    <i class="fas fa-cubes text-primary"></i>
+                    <span>Dependency Analysis</span>
+                </h3>
+                <div class="space-y-4" id="dependency-analysis">
+                    <!-- Will be populated by JavaScript -->
+                </div>
+            </div>
+
+            <!-- Permission Analysis -->
+            <div class="bg-gray-800 rounded-lg border border-gray-700 p-4">
+                <h3 class="text-lg font-medium text-white mb-4 flex items-center space-x-2">
+                    <i class="fas fa-key text-primary"></i>
+                    <span>Permission Analysis</span>
+                </h3>
+                <div class="space-y-4" id="permission-analysis">
+                    <!-- Will be populated by JavaScript -->
+                </div>
+            </div>
+
+            <!-- Manifest Analysis -->
+            <div class="bg-gray-800 rounded-lg border border-gray-700 p-4">
+                <h3 class="text-lg font-medium text-white mb-4 flex items-center space-x-2">
+                    <i class="fas fa-file-alt text-primary"></i>
+                    <span>Manifest Analysis</span>
+                </h3>
+                <div class="space-y-4" id="manifest-analysis">
+                    <!-- Will be populated by JavaScript -->
+                </div>
+            </div>
+
+            <!-- Code Analysis -->
+            <div class="bg-gray-800 rounded-lg border border-gray-700 p-4">
+                <h3 class="text-lg font-medium text-white mb-4 flex items-center space-x-2">
+                    <i class="fas fa-code text-primary"></i>
+                    <span>Code Analysis</span>
+                </h3>
+                <div class="space-y-4" id="code-analysis">
+                    <!-- Will be populated by JavaScript -->
+                </div>
+            </div>
+
+            <!-- Gradle Analysis -->
+            <div class="bg-gray-800 rounded-lg border border-gray-700 p-4">
+                <h3 class="text-lg font-medium text-white mb-4 flex items-center space-x-2">
+                    <i class="fas fa-cogs text-primary"></i>
+                    <span>Gradle Analysis</span>
+                </h3>
+                <div class="space-y-4" id="gradle-analysis">
+                    <!-- Will be populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let selectedReports = new Set();
+
+document.addEventListener('DOMContentLoaded', async function() {
+    // Get selected report IDs from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const reportIds = urlParams.get('reports');
+    
+    if (reportIds) {
+        // Parse report IDs and mark them as selected
+        const ids = reportIds.split(',').map(Number);
+        ids.forEach(id => {
+            const reportElement = document.querySelector(`.report-item[data-report-id="${id}"]`);
+            if (reportElement) {
+                selectedReports.add(id);
+                reportElement.classList.add('selected');
+                reportElement.querySelector('.selection-indicator i').classList.remove('hidden');
+            }
+        });
+        
+        updateSelectionCount();
+        
+        // If we have selected reports, load the comparison
+        if (selectedReports.size >= 2) {
+            await compareReports(true); // true means don't update URL
+        }
+    }
+});
+
+function toggleReportSelection(element, reportId) {
+    if (selectedReports.has(reportId)) {
+        selectedReports.delete(reportId);
+        element.classList.remove('selected');
+        element.querySelector('.selection-indicator i').classList.add('hidden');
+    } else {
+        if (selectedReports.size >= 10) {
+            AppUtils.showFlash('error', 'Maximum 10 reports can be compared at once');
+            return;
+        }
+        selectedReports.add(reportId);
+        element.classList.add('selected');
+        element.querySelector('.selection-indicator i').classList.remove('hidden');
+    }
+    
+    updateSelectionCount();
+}
+
+function updateSelectionCount() {
+    const count = selectedReports.size;
+    document.getElementById('selected-count').textContent = count;
+    
+    const compareBtn = document.getElementById('compare-btn');
+    compareBtn.disabled = count < 2;
+}
+
+function filterReports() {
+    const searchTerm = document.getElementById('search-reports').value.toLowerCase();
+    const reports = document.querySelectorAll('.report-item');
+    
+    reports.forEach(report => {
+        const appName = report.getAttribute('data-app-name').toLowerCase();
+        const packageName = report.getAttribute('data-package-name').toLowerCase();
+        
+        if (appName.includes(searchTerm) || packageName.includes(searchTerm)) {
+            report.style.display = '';
+        } else {
+            report.style.display = 'none';
+        }
+    });
+}
+
+async function compareReports(skipUrlUpdate = false) {
+    if (selectedReports.size < 2) {
+        AppUtils.showFlash('error', 'Select at least 2 reports to compare');
+        return;
+    }
+    
+    AppUtils.showLoading();
+    
+    try {
+        const reportIds = Array.from(selectedReports);
+        
+        // Update URL with selected reports (unless skipUrlUpdate is true)
+        if (!skipUrlUpdate) {
+            const newUrl = new URL(window.location.href);
+            newUrl.searchParams.set('reports', reportIds.join(','));
+            window.history.pushState({}, '', newUrl);
+        }
+        
+        const reports = [];
+        
+        // Fetch full report data for each selected report
+        for (const id of reportIds) {
+            const response = await fetch(`/api/reports/${id}`);
+            if (!response.ok) throw new Error(`Failed to fetch report ${id}`);
+            const report = await response.json();
+            reports.push(report);
+        }
+        
+        displayComparison(reports);
+        document.getElementById('comparison-results').classList.remove('hidden');
+        
+        // Hide the selection section when showing results
+        document.querySelector('.bg-gray-800:not(#comparison-results)').classList.add('hidden');
+        
+        // Add a "Back to Selection" button if it doesn't exist
+        let backButton = document.querySelector('#back-to-selection');
+        if (!backButton) {
+            backButton = document.createElement('button');
+            backButton.id = 'back-to-selection';
+            backButton.className = 'btn btn-secondary mb-4';
+            backButton.innerHTML = '<i class="fas fa-arrow-left"></i> Back to Selection';
+            backButton.onclick = backToSelection;
+            document.getElementById('comparison-results').insertAdjacentElement('beforebegin', backButton);
+        }
+        
+        // Scroll to results
+        document.getElementById('comparison-results').scrollIntoView({ behavior: 'smooth' });
+        
+    } catch (error) {
+        AppUtils.showFlash('error', 'Failed to load comparison: ' + error.message);
+    } finally {
+        AppUtils.hideLoading();
+    }
+}
+
+function displayComparison(reports) {
+    // Display summary cards (existing code)
+    displaySecurityScores(reports);
+    displayIssueDistribution(reports);
+    displayDependencyStats(reports);
+    displayPermissionStats(reports);
+    
+    // Display detailed sections
+    displayAppOverview(reports);
+    displaySecurityAnalysis(reports);
+    displayDependencyAnalysis(reports);
+    displayPermissionAnalysis(reports);
+    displayManifestAnalysis(reports);
+    displayCodeAnalysis(reports);
+    displayGradleAnalysis(reports);
+}
+
+function displaySecurityScores(reports) {
+    const scoresDiv = document.getElementById('security-scores');
+    scoresDiv.innerHTML = reports.map(report => {
+        const totalIssues = report.metadata?.total_issues || 0;
+        const criticalWeight = 10;
+        const highWeight = 5;
+        const mediumWeight = 2;
+        const lowWeight = 1;
+        
+        const weightedScore = 100 - (
+            ((report.summary?.by_severity?.critical || 0) * criticalWeight +
+             (report.summary?.by_severity?.high || 0) * highWeight +
+             (report.summary?.by_severity?.medium || 0) * mediumWeight +
+             (report.summary?.by_severity?.low || 0) * lowWeight) / (totalIssues || 1) * 10
+        );
+        
+        const score = Math.max(0, Math.min(100, weightedScore)).toFixed(1);
+        const scoreClass = score >= 90 ? 'text-success' : score >= 70 ? 'text-warning' : 'text-error';
+        
+        return `
+            <div class="flex items-center justify-between">
+                <span class="text-gray-400">${report.app_metadata?.app_name || 'Unknown App'}</span>
+                <span class="${scoreClass} font-medium">${score}%</span>
+            </div>
+        `;
+    }).join('');
+}
+
+function displayIssueDistribution(reports) {
+    const distributionDiv = document.getElementById('issue-distribution');
+    distributionDiv.innerHTML = reports.map(report => {
+        const total = report.metadata?.total_issues || 0;
+        const summary = report.summary?.by_severity || { critical: 0, high: 0, medium: 0, low: 0 };
+        return `
+            <div class="space-y-1">
+                <div class="text-gray-400 text-sm">${report.app_metadata?.app_name || 'Unknown App'}</div>
+                <div class="flex h-2 rounded-full overflow-hidden">
+                    ${summary.critical > 0 ? `
+                        <div class="bg-critical" style="width: ${(summary.critical/total*100)}%"></div>
+                    ` : ''}
+                    ${summary.high > 0 ? `
+                        <div class="bg-high" style="width: ${(summary.high/total*100)}%"></div>
+                    ` : ''}
+                    ${summary.medium > 0 ? `
+                        <div class="bg-medium" style="width: ${(summary.medium/total*100)}%"></div>
+                    ` : ''}
+                    ${summary.low > 0 ? `
+                        <div class="bg-low" style="width: ${(summary.low/total*100)}%"></div>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function displayDependencyStats(reports) {
+    const statsDiv = document.getElementById('dependency-stats');
+    statsDiv.innerHTML = reports.map(report => {
+        const deps = report.dependencies || { total_count: 0, details: [] };
+        return `
+            <div class="space-y-1">
+                <div class="text-gray-400 text-sm">${report.app_metadata?.app_name || 'Unknown App'}</div>
+                <div class="flex items-center justify-between">
+                    <span class="text-xs text-gray-500">Total</span>
+                    <span class="text-white">${deps.total_count}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-xs text-gray-500">Outdated</span>
+                    <span class="text-warning">${deps.details.filter(d => d.is_outdated).length}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-xs text-gray-500">Vulnerable</span>
+                    <span class="text-error">${deps.details.filter(d => d.vulnerabilities && d.vulnerabilities.length).length}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function displayPermissionStats(reports) {
+    const statsDiv = document.getElementById('permission-stats');
+    statsDiv.innerHTML = reports.map(report => {
+        const permissions = report.app_metadata?.permissions || [];
+        const dangerousPerms = permissions.filter(p => isDangerousPermission(p));
+        return `
+            <div class="space-y-1">
+                <div class="text-gray-400 text-sm">${report.app_metadata?.app_name || 'Unknown App'}</div>
+                <div class="flex items-center justify-between">
+                    <span class="text-xs text-gray-500">Total</span>
+                    <span class="text-white">${permissions.length}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-xs text-gray-500">Dangerous</span>
+                    <span class="text-error">${dangerousPerms.length}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function isDangerousPermission(permission) {
+    const dangerousPerms = [
+        'CAMERA', 'RECORD_AUDIO', 'ACCESS_FINE_LOCATION', 'ACCESS_COARSE_LOCATION',
+        'READ_CONTACTS', 'WRITE_CONTACTS', 'READ_CALENDAR', 'WRITE_CALENDAR',
+        'READ_EXTERNAL_STORAGE', 'WRITE_EXTERNAL_STORAGE', 'READ_PHONE_STATE'
+    ];
+    return dangerousPerms.includes(permission);
+}
+
+// Replace buildComparisonTable with new detailed view functions
+function displayComparison(reports) {
+    // Display summary cards (existing code)
+    displaySecurityScores(reports);
+    displayIssueDistribution(reports);
+    displayDependencyStats(reports);
+    displayPermissionStats(reports);
+    
+    // Display detailed sections
+    displayAppOverview(reports);
+    displaySecurityAnalysis(reports);
+    displayDependencyAnalysis(reports);
+    displayPermissionAnalysis(reports);
+    displayManifestAnalysis(reports);
+    displayCodeAnalysis(reports);
+    displayGradleAnalysis(reports);
+}
+
+function displayAppOverview(reports) {
+    const container = document.getElementById('app-overview');
+    container.innerHTML = reports.map(report => `
+        <div class="bg-gray-700 rounded p-4">
+            <div class="text-lg font-medium text-white mb-2">${report.app_metadata?.app_name || 'Unknown App'}</div>
+            <div class="space-y-2">
+                <div class="flex justify-between">
+                    <span class="text-gray-400">Package:</span>
+                    <span class="text-white">${report.app_metadata?.package_name || 'N/A'}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-400">Version:</span>
+                    <span class="text-white">${report.app_metadata?.version_name || 'N/A'} (${report.app_metadata?.version_code || 'N/A'})</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-400">Target SDK:</span>
+                    <span class="text-white">${report.app_metadata?.target_sdk || 'N/A'}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-400">Min SDK:</span>
+                    <span class="text-white">${report.app_metadata?.min_sdk || 'N/A'}</span>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function displaySecurityAnalysis(reports) {
+    const container = document.getElementById('security-analysis');
+    container.innerHTML = reports.map(report => {
+        const score = calculateSecurityScore(report);
+        const scoreClass = score >= 90 ? 'text-success' : score >= 70 ? 'text-warning' : 'text-error';
+        
+        return `
+        <div class="bg-gray-700 rounded p-4">
+            <div class="flex items-center justify-between mb-4">
+                <div class="text-lg font-medium text-white">${report.app_metadata?.app_name || 'Unknown App'}</div>
+                <div class="${scoreClass} text-xl font-bold">${score}%</div>
+            </div>
+            <div class="space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-gray-800 rounded p-3">
+                        <div class="text-error font-medium mb-1">Critical Issues</div>
+                        <div class="text-2xl">${report.summary?.by_severity?.critical || 0}</div>
+                    </div>
+                    <div class="bg-gray-800 rounded p-3">
+                        <div class="text-high font-medium mb-1">High Issues</div>
+                        <div class="text-2xl">${report.summary?.by_severity?.high || 0}</div>
+                    </div>
+                    <div class="bg-gray-800 rounded p-3">
+                        <div class="text-medium font-medium mb-1">Medium Issues</div>
+                        <div class="text-2xl">${report.summary?.by_severity?.medium || 0}</div>
+                    </div>
+                    <div class="bg-gray-800 rounded p-3">
+                        <div class="text-low font-medium mb-1">Low Issues</div>
+                        <div class="text-2xl">${report.summary?.by_severity?.low || 0}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        `;
+    }).join('');
+}
+
+function displayDependencyAnalysis(reports) {
+    const container = document.getElementById('dependency-analysis');
+    container.innerHTML = reports.map(report => {
+        const deps = report.dependencies || { total_count: 0, details: [] };
+        const outdated = deps.details.filter(d => d.is_outdated);
+        const vulnerable = deps.details.filter(d => d.vulnerabilities && d.vulnerabilities.length);
+        
+        return `
+        <div class="bg-gray-700 rounded p-4">
+            <div class="text-lg font-medium text-white mb-4">${report.app_metadata?.app_name || 'Unknown App'}</div>
+            
+            <div class="grid grid-cols-3 gap-4 mb-4">
+                <div class="bg-gray-800 rounded p-3 text-center">
+                    <div class="text-gray-400 text-sm">Total</div>
+                    <div class="text-2xl text-white">${deps.total_count}</div>
+                </div>
+                <div class="bg-gray-800 rounded p-3 text-center">
+                    <div class="text-gray-400 text-sm">Outdated</div>
+                    <div class="text-2xl text-warning">${outdated.length}</div>
+                </div>
+                <div class="bg-gray-800 rounded p-3 text-center">
+                    <div class="text-gray-400 text-sm">Vulnerable</div>
+                    <div class="text-2xl text-error">${vulnerable.length}</div>
+                </div>
+            </div>
+            
+            ${outdated.length > 0 ? `
+            <div class="mb-4">
+                <div class="text-warning font-medium mb-2">Outdated Dependencies</div>
+                <div class="space-y-2">
+                    ${outdated.map(d => `
+                    <div class="bg-gray-800 rounded p-2 text-sm">
+                        <div class="font-medium">${d.group_id}:${d.artifact_id}</div>
+                        <div class="text-gray-400">Current: ${d.version}</div>
+                        <div class="text-warning">Latest: ${d.latest_version}</div>
+                    </div>
+                    `).join('')}
+                </div>
+            </div>
+            ` : ''}
+            
+            ${vulnerable.length > 0 ? `
+            <div>
+                <div class="text-error font-medium mb-2">Vulnerable Dependencies</div>
+                <div class="space-y-2">
+                    ${vulnerable.map(d => `
+                    <div class="bg-gray-800 rounded p-2 text-sm">
+                        <div class="font-medium">${d.group_id}:${d.artifact_id}</div>
+                        <div class="text-gray-400">Version: ${d.version}</div>
+                        <div class="text-error">CVEs: ${d.vulnerabilities.map(v => v.id).join(', ')}</div>
+                    </div>
+                    `).join('')}
+                </div>
+            </div>
+            ` : ''}
+        </div>
+        `;
+    }).join('');
+}
+
+function displayPermissionAnalysis(reports) {
+    const container = document.getElementById('permission-analysis');
+    container.innerHTML = reports.map(report => {
+        const permissions = report.app_metadata?.permissions || [];
+        const dangerousPerms = permissions.filter(p => isDangerousPermission(p));
+        const normalPerms = permissions.filter(p => !isDangerousPermission(p));
+        
+        return `
+        <div class="bg-gray-700 rounded p-4">
+            <div class="text-lg font-medium text-white mb-4">${report.app_metadata?.app_name || 'Unknown App'}</div>
+            
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div class="bg-gray-800 rounded p-3 text-center">
+                    <div class="text-gray-400 text-sm">Total Permissions</div>
+                    <div class="text-2xl text-white">${permissions.length}</div>
+                </div>
+                <div class="bg-gray-800 rounded p-3 text-center">
+                    <div class="text-gray-400 text-sm">Dangerous</div>
+                    <div class="text-2xl text-error">${dangerousPerms.length}</div>
+                </div>
+            </div>
+            
+            ${dangerousPerms.length > 0 ? `
+            <div class="mb-4">
+                <div class="text-error font-medium mb-2">Dangerous Permissions</div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    ${dangerousPerms.map(p => `
+                    <div class="bg-gray-800 rounded p-2 text-sm">
+                        <i class="fas fa-exclamation-triangle text-error mr-1"></i>
+                        ${p}
+                    </div>
+                    `).join('')}
+                </div>
+            </div>
+            ` : ''}
+            
+            ${normalPerms.length > 0 ? `
+            <div>
+                <div class="text-success font-medium mb-2">Normal Permissions</div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    ${normalPerms.map(p => `
+                    <div class="bg-gray-800 rounded p-2 text-sm">
+                        <i class="fas fa-check text-success mr-1"></i>
+                        ${p}
+                    </div>
+                    `).join('')}
+                </div>
+            </div>
+            ` : ''}
+        </div>
+        `;
+    }).join('');
+}
+
+function displayManifestAnalysis(reports) {
+    const container = document.getElementById('manifest-analysis');
+    container.innerHTML = reports.map(report => {
+        const manifestIssues = report.manifest_analysis || [];
+        
+        return `
+        <div class="bg-gray-700 rounded p-4">
+            <div class="text-lg font-medium text-white mb-4">${report.app_metadata?.app_name || 'Unknown App'}</div>
+            
+            <div class="space-y-4">
+                ${manifestIssues.map(issue => `
+                <div class="bg-gray-800 rounded p-3">
+                    <div class="font-medium ${issue.risk_level === 'HIGH' ? 'text-error' : issue.risk_level === 'MEDIUM' ? 'text-warning' : 'text-low'}">
+                        ${issue.title}
+                    </div>
+                    <div class="text-gray-400 text-sm mt-1">${issue.description}</div>
+                    ${issue.recommendation ? `
+                    <div class="text-primary text-sm mt-2">
+                        <i class="fas fa-lightbulb mr-1"></i>
+                        ${issue.recommendation}
+                    </div>
+                    ` : ''}
+                </div>
+                `).join('')}
+                
+                ${manifestIssues.length === 0 ? `
+                <div class="text-gray-400 text-center py-4">
+                    No manifest issues found
+                </div>
+                ` : ''}
+            </div>
+        </div>
+        `;
+    }).join('');
+}
+
+function displayCodeAnalysis(reports) {
+    const container = document.getElementById('code-analysis');
+    container.innerHTML = reports.map(report => {
+        const codeIssues = report.code_analysis || [];
+        
+        return `
+        <div class="bg-gray-700 rounded p-4">
+            <div class="text-lg font-medium text-white mb-4">${report.app_metadata?.app_name || 'Unknown App'}</div>
+            
+            <div class="space-y-4">
+                ${codeIssues.map(issue => `
+                <div class="bg-gray-800 rounded p-3">
+                    <div class="font-medium ${issue.risk_level === 'HIGH' ? 'text-error' : issue.risk_level === 'MEDIUM' ? 'text-warning' : 'text-low'}">
+                        ${issue.title}
+                    </div>
+                    <div class="text-sm text-gray-400 mt-1">
+                        <span class="text-primary">${issue.file_path}</span>
+                        ${issue.line_number ? `<span class="text-gray-500">:${issue.line_number}</span>` : ''}
+                    </div>
+                    <div class="text-gray-400 text-sm mt-1">${issue.description}</div>
+                    ${issue.code_snippet ? `
+                    <div class="bg-gray-900 rounded p-2 mt-2 font-mono text-sm">
+                        ${issue.code_snippet}
+                    </div>
+                    ` : ''}
+                </div>
+                `).join('')}
+                
+                ${codeIssues.length === 0 ? `
+                <div class="text-gray-400 text-center py-4">
+                    No code issues found
+                </div>
+                ` : ''}
+            </div>
+        </div>
+        `;
+    }).join('');
+}
+
+function displayGradleAnalysis(reports) {
+    const container = document.getElementById('gradle-analysis');
+    container.innerHTML = reports.map(report => {
+        const gradleIssues = report.gradle_analysis || [];
+        
+        return `
+        <div class="bg-gray-700 rounded p-4">
+            <div class="text-lg font-medium text-white mb-4">${report.app_metadata?.app_name || 'Unknown App'}</div>
+            
+            <div class="space-y-4">
+                ${gradleIssues.map(issue => `
+                <div class="bg-gray-800 rounded p-3">
+                    <div class="font-medium ${issue.risk_level === 'HIGH' ? 'text-error' : issue.risk_level === 'MEDIUM' ? 'text-warning' : 'text-low'}">
+                        ${issue.title}
+                    </div>
+                    <div class="text-gray-400 text-sm mt-1">${issue.description}</div>
+                    ${issue.recommendation ? `
+                    <div class="text-primary text-sm mt-2">
+                        <i class="fas fa-lightbulb mr-1"></i>
+                        ${issue.recommendation}
+                    </div>
+                    ` : ''}
+                </div>
+                `).join('')}
+                
+                ${gradleIssues.length === 0 ? `
+                <div class="text-gray-400 text-center py-4">
+                    No Gradle configuration issues found
+                </div>
+                ` : ''}
+            </div>
+        </div>
+        `;
+    }).join('');
+}
+
+function calculateSecurityScore(report) {
+    const totalIssues = report.metadata?.total_issues || 0;
+    if (totalIssues === 0) return 100;
+    
+    const criticalWeight = 10;
+    const highWeight = 5;
+    const mediumWeight = 2;
+    const lowWeight = 1;
+    
+    const weightedScore = 100 - (
+        ((report.summary?.by_severity?.critical || 0) * criticalWeight +
+         (report.summary?.by_severity?.high || 0) * highWeight +
+         (report.summary?.by_severity?.medium || 0) * mediumWeight +
+         (report.summary?.by_severity?.low || 0) * lowWeight) / (totalIssues || 1) * 10
+    );
+    
+    return Math.max(0, Math.min(100, weightedScore)).toFixed(1);
+}
+
+function backToSelection() {
+    // Show selection section
+    document.querySelector('.bg-gray-800:not(#comparison-results)').classList.remove('hidden');
+    // Hide results and back button
+    document.getElementById('comparison-results').classList.add('hidden');
+    document.getElementById('back-to-selection').remove();
+    // Clear URL parameters
+    const newUrl = new URL(window.location.href);
+    newUrl.searchParams.delete('reports');
+    window.history.pushState({}, '', newUrl);
+}
+
+async function refreshComparison() {
+    if (selectedReports.size >= 2) {
+        await compareReports(true); // true means don't update URL
+        AppUtils.showFlash('success', 'Comparison refreshed successfully');
+    }
+}
+</script>
+{% endblock %} 

@@ -9,21 +9,21 @@
         <div class="flex items-center justify-between">
             <div class="flex items-center space-x-3">
                 <div class="w-12 h-12 bg-gray-700 rounded-lg border border-gray-600 flex items-center justify-center">
-                    {% if report.app_logo %}
+            {% if report.app_logo %}
                     <img src="data:image/png;base64,{{ report.app_logo }}" alt="{{ report_data.app_metadata.app_name }}" class="w-full h-full rounded-lg">
-                    {% else %}
+            {% else %}
                     <i class="fas fa-mobile-alt text-gray-400"></i>
-                    {% endif %}
-                </div>
+            {% endif %}
+        </div>
                 <div>
                     <h1 class="text-xl font-bold text-white">{{ report_data.app_metadata.app_name }}</h1>
                     <div class="text-sm text-gray-400">
                         <span>{{ report_data.app_metadata.package_name }}</span>
                         <span class="mx-1">•</span>
                         <span>{{ report.scan_time.strftime('%Y-%m-%d %H:%M') }}</span>
-                    </div>
-                </div>
             </div>
+        </div>
+    </div>
             <div class="flex items-center space-x-3">
                 <button onclick="rerunAnalysis()" 
                         data-project-path="{{ report.project_path }}"
@@ -42,8 +42,8 @@
                     <span>Ignored Issues ({{ ignored_issues|length }})</span>
                 </button>
             </div>
-        </div>
     </div>
+</div>
 
     <!-- Summary Stats -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -62,8 +62,8 @@
         <div class="bg-gray-800 rounded-lg border border-gray-700 p-4 text-center">
             <div class="text-2xl font-bold text-low">{{ report_data.summary.by_severity.low }}</div>
             <div class="text-sm text-gray-400">Low</div>
-        </div>
     </div>
+</div>
 
     <!-- App Overview -->
     <div class="bg-gray-800 rounded-lg border border-gray-700 p-4">
@@ -72,24 +72,24 @@
                 <i class="fas fa-mobile-alt text-primary"></i>
                 <span>Application Overview</span>
             </h2>
-        </div>
+    </div>
         <div class="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
             <div>
                 <div class="text-gray-400">Version</div>
                 <div class="text-white font-medium">{{ report_data.app_metadata.version_name }} ({{ report_data.app_metadata.version_code }})</div>
-            </div>
+                </div>
             <div>
                 <div class="text-gray-400">Target SDK</div>
                 <div class="text-white font-medium">{{ report_data.app_metadata.target_sdk }}</div>
-            </div>
+                </div>
             <div>
                 <div class="text-gray-400">Min SDK</div>
                 <div class="text-white font-medium">{{ report_data.app_metadata.min_sdk }}</div>
-            </div>
+                </div>
             <div>
                 <div class="text-gray-400">Total Issues</div>
                 <div class="text-white font-medium">{{ report_data.metadata.total_issues }}</div>
-            </div>
+                </div>
             <div>
                 <div class="text-gray-400">Dependencies</div>
                 <div class="text-white font-medium">{{ report_data.dependencies.total_count }}</div>
@@ -97,31 +97,31 @@
             <div>
                 <div class="text-gray-400">Permissions</div>
                 <div class="text-white font-medium">{{ report_data.app_metadata.permissions|length }}</div>
-            </div>
         </div>
     </div>
+</div>
 
-    <!-- Permissions -->
+<!-- Permissions -->
     <div class="bg-gray-800 rounded-lg border border-gray-700">
         <div class="p-4 border-b border-gray-700 cursor-pointer" onclick="AppUtils.toggleElement('permissions')">
             <div class="flex items-center justify-between">
                 <h2 class="text-lg font-medium text-white flex items-center space-x-2">
                     <i class="fas fa-key text-primary"></i>
                     <span>Permissions ({{ report_data.app_metadata.permissions|length }})</span>
-                </h2>
+        </h2>
                 <i class="fas fa-chevron-right expand-icon transition-transform"></i>
             </div>
-        </div>
+    </div>
         <div id="permissions" class="p-4 hidden">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {% for permission in report_data.app_metadata.permissions %}
+            {% for permission in report_data.app_metadata.permissions %}
                 <div class="bg-gray-700 rounded p-2 text-sm font-mono text-gray-300">{{ permission }}</div>
-                {% endfor %}
-            </div>
+            {% endfor %}
         </div>
     </div>
+</div>
 
-    <!-- Security Issues -->
+<!-- Security Issues -->
     {% for category in report_data.issues.categorized %}
     {% set category_index = loop.index %}
     <div class="bg-gray-800 rounded-lg border border-gray-700 border-l-4 border-l-{{ category.risk_level.lower() }}">
@@ -132,13 +132,13 @@
                     <span>{{ category.category }}</span>
                     <span class="bg-{{ category.risk_level.lower() }} text-white px-2 py-1 rounded text-xs">{{ category.issue_count }}</span>
                     <span class="severity-{{ category.risk_level.lower() }} px-2 py-1 rounded text-xs">{{ category.risk_level }}</span>
-                </h2>
+            </h2>
                 <i class="fas fa-chevron-right expand-icon transition-transform"></i>
             </div>
         </div>
         <div id="category-{{ category_index }}" class="hidden">
             <div class="p-4 space-y-3">
-                {% for issue in category.issues %}
+                        {% for issue in category.issues %}
                 <div class="bg-gray-700 rounded border border-gray-600">
                     <div class="p-3 cursor-pointer" onclick="AppUtils.toggleElement('issue-{{ category_index }}-{{ loop.index }}')">
                         <div class="flex items-center justify-between">
@@ -161,24 +161,24 @@
                         <div>
                             <h5 class="text-sm font-medium text-primary mb-1">Description</h5>
                             <p class="text-sm text-gray-300">{{ issue.description }}</p>
-                        </div>
-                        
-                        {% if issue.file_path %}
+                                    </div>
+                                    
+                                    {% if issue.file_path %}
                         <div>
                             <h5 class="text-sm font-medium text-primary mb-1">Location</h5>
                             <div class="bg-gray-800 rounded p-2 text-sm font-mono text-gray-300">
                                 {{ issue.file_path }}{% if issue.line_number %} (Line {{ issue.line_number }}){% endif %}
-                            </div>
-                        </div>
-                        {% endif %}
-                        
-                        {% if issue.code_snippet %}
+                                        </div>
+                                    </div>
+                                    {% endif %}
+                                    
+                                    {% if issue.code_snippet %}
                         <div>
                             <h5 class="text-sm font-medium text-primary mb-1">Code Snippet</h5>
                             <div class="code-block">{{ issue.code_snippet }}</div>
-                        </div>
-                        {% endif %}
-                        
+                                    </div>
+                                    {% endif %}
+                                    
                         <div>
                             <h5 class="text-sm font-medium text-primary mb-1">Recommendation</h5>
                             <p class="text-sm text-gray-300">{{ issue.recommendation }}</p>
@@ -196,22 +196,22 @@
                                 <span>Ignore Issue</span>
                             </button>
                         </div>
-                    </div>
-                </div>
-                {% endfor %}
+                                    </div>
+                                </div>
+                        {% endfor %}
             </div>
         </div>
     </div>
     {% endfor %}
 
-    <!-- Dependencies -->
+<!-- Dependencies -->
     <div class="bg-gray-800 rounded-lg border border-gray-700">
         <div class="p-4 border-b border-gray-700 cursor-pointer" onclick="AppUtils.toggleElement('dependencies')">
             <div class="flex items-center justify-between">
                 <h2 class="text-lg font-medium text-white flex items-center space-x-2">
                     <i class="fas fa-cubes text-primary"></i>
                     <span>Dependencies ({{ report_data.dependencies.total_count }})</span>
-                </h2>
+        </h2>
                 <i class="fas fa-chevron-right expand-icon transition-transform"></i>
             </div>
         </div>
@@ -222,8 +222,8 @@
                     <span class="bg-high text-white px-2 py-1 rounded text-xs">{{ report_data.dependencies.by_risk.high }} High</span>
                     <span class="bg-medium text-white px-2 py-1 rounded text-xs">{{ report_data.dependencies.by_risk.medium }} Medium</span>
                     <span class="bg-low text-white px-2 py-1 rounded text-xs">{{ report_data.dependencies.by_risk.low }} Low</span>
-                </div>
-                
+        </div>
+        
                 <div class="overflow-x-auto">
                     <table class="w-full text-sm">
                         <thead class="bg-gray-700">
@@ -233,53 +233,53 @@
                                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-300">Latest</th>
                                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-300">Risk</th>
                                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-300">Status</th>
-                            </tr>
-                        </thead>
+                    </tr>
+                </thead>
                         <tbody class="divide-y divide-gray-700">
-                            {% for dep in report_data.dependencies.details %}
+                    {% for dep in report_data.dependencies.details %}
                             <tr class="table-row-hover">
                                 <td class="px-3 py-2 font-mono text-gray-300">{{ dep.group_id }}:{{ dep.artifact_id }}</td>
                                 <td class="px-3 py-2 font-mono text-gray-300">{{ dep.version }}</td>
                                 <td class="px-3 py-2 font-mono text-gray-300">{{ dep.latest_version or 'Unknown' }}</td>
                                 <td class="px-3 py-2">
                                     <span class="severity-{{ dep.risk_level.lower() }} px-2 py-1 rounded text-xs">{{ dep.risk_level }}</span>
-                                </td>
+                        </td>
                                 <td class="px-3 py-2">
-                                    {% if dep.is_outdated %}
+                            {% if dep.is_outdated %}
                                     <span class="bg-warning text-white px-2 py-1 rounded text-xs">Outdated</span>
-                                    {% endif %}
+                                        {% endif %}
                                     {% if dep.vulnerabilities %}
                                     <span class="bg-error text-white px-2 py-1 rounded text-xs">Vulnerable</span>
                                     {% endif %}
                                     {% if not dep.is_outdated and not dep.vulnerabilities %}
                                     <span class="bg-success text-white px-2 py-1 rounded text-xs">Current</span>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                                        {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
                 </div>
-            </div>
         </div>
     </div>
+</div>
 
-    <!-- Recommendations -->
-    {% if report_data.recommendations.general %}
+<!-- Recommendations -->
+{% if report_data.recommendations.general %}
     <div class="bg-gray-800 rounded-lg border border-gray-700 p-4">
         <h2 class="text-lg font-medium text-white mb-3 flex items-center space-x-2">
             <i class="fas fa-lightbulb text-primary"></i>
             <span>Recommendations</span>
         </h2>
         <div class="space-y-2">
-            {% for recommendation in report_data.recommendations.general %}
+        {% for recommendation in report_data.recommendations.general %}
             <div class="bg-gray-700 rounded p-3 text-sm text-gray-300 border-l-4 border-l-primary">
-                {{ recommendation }}
-            </div>
-            {% endfor %}
+            {{ recommendation }}
         </div>
+        {% endfor %}
     </div>
-    {% endif %}
+</div>
+{% endif %}
 
 
 
@@ -563,4 +563,4 @@ document.addEventListener('click', function(event) {
     }
 });
 </script>
-{% endblock %}
+{% endblock %} 

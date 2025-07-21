@@ -3,168 +3,148 @@
 {% block title %}Security Reports - Android Security Analyzer{% endblock %}
 
 {% block content %}
-<div class="space-y-4">
-    <!-- Header -->
-    <div class="flex items-center justify-between">
-        <div>
-            <h1 class="text-2xl font-bold text-white">Security Reports</h1>
-            <p class="text-gray-400 text-sm">Manage and view Android security analysis reports</p>
-        </div>
-        <div class="flex items-center">
-            <a href="{{ url_for('submit_request_page') }}" class="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded text-sm font-medium flex items-center space-x-2 transition-colors">
-                <i class="fas fa-plus"></i>
-                <span>New Analysis</span>
-            </a>
+<div class="reports-header">
+    <div class="reports-header-content">
+        <div class="reports-title-section">
+            <h1><i class="fas fa-shield-alt"></i> Android Security Analysis Reports</h1>
         </div>
     </div>
+</div>
 
-    <!-- Search and Filters -->
-    <div class="bg-gray-800 rounded-lg p-3 border border-gray-700">
-        <div class="flex items-center space-x-3">
-            <div class="relative flex-1">
-                <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-sm"></i>
-                <input 
-                    type="text" 
-                    id="search-input" 
-                    placeholder="Search reports by app name or package..." 
-                    class="w-full pl-8 pr-4 py-2 bg-gray-700 border border-gray-600 rounded text-sm text-white placeholder-gray-400 focus:outline-none focus:border-primary"
-                    onkeyup="filterReports()"
-                >
-            </div>
-        </div>
-    </div>
-
-    <!-- Reports Table -->
-    <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
-        {% if reports %}
-        <div class="overflow-x-auto">
-            <table class="w-full" id="reports-table">
-                <thead class="bg-gray-700">
-                    <tr>
-                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">App</th>
-                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Details</th>
-                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Scan Time</th>
-                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Issues</th>
-                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Status</th>
-                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-700">
-                    {% for report in reports %}
-                    <tr class="table-row-hover" data-report-id="{{ report.id }}">
-                        <td class="px-3 py-3">
-                            <div class="flex items-center">
-                                {% if report.app_logo %}
-                                <img src="data:image/png;base64,{{ report.app_logo }}" alt="{{ report.app_name }}" class="w-8 h-8 rounded border border-gray-600">
-                                {% else %}
-                                <div class="w-8 h-8 bg-gray-700 rounded border border-gray-600 flex items-center justify-center">
-                                    <i class="fas fa-mobile-alt text-gray-400 text-sm"></i>
-                                </div>
-                                {% endif %}
-                            </div>
-                        </td>
-                        <td class="px-3 py-3">
-                            <div class="space-y-1">
-                                <div class="font-medium text-white text-sm app-name">{{ report.app_name }}</div>
-                                <div class="text-xs text-gray-400 font-mono app-package">{{ report.package_name }}</div>
-                                <div class="text-xs text-primary">v{{ report.version }}</div>
-                            </div>
-                        </td>
-                        <td class="px-3 py-3">
-                            <div class="text-sm text-gray-300">{{ report.scan_time.strftime('%Y-%m-%d') }}</div>
-                            <div class="text-xs text-gray-400">{{ report.scan_time.strftime('%H:%M:%S') }}</div>
-                        </td>
-                        <td class="px-3 py-3">
-                            <div class="flex flex-wrap gap-1">
-                                {% if report.critical_issues > 0 %}
-                                <span class="bg-critical text-white px-2 py-1 rounded text-xs font-medium">{{ report.critical_issues }} Critical</span>
-                                {% endif %}
-                                {% if report.high_issues > 0 %}
-                                <span class="bg-high text-white px-2 py-1 rounded text-xs font-medium">{{ report.high_issues }} High</span>
-                                {% endif %}
-                                {% if report.medium_issues > 0 %}
-                                <span class="bg-medium text-white px-2 py-1 rounded text-xs font-medium">{{ report.medium_issues }} Medium</span>
-                                {% endif %}
-                                {% if report.low_issues > 0 %}
-                                <span class="bg-low text-white px-2 py-1 rounded text-xs font-medium">{{ report.low_issues }} Low</span>
-                                {% endif %}
-                                {% if report.total_issues == 0 %}
-                                <span class="bg-success text-white px-2 py-1 rounded text-xs font-medium">No Issues</span>
-                                {% endif %}
-                            </div>
-                            <div class="text-xs text-gray-400 mt-1">Total: {{ report.total_issues }}</div>
-                        </td>
-                        <td class="px-3 py-3">
-                            {% if report.status == 'completed' %}
-                            <span class="bg-success text-white px-2 py-1 rounded text-xs font-medium flex items-center space-x-1 w-fit">
-                                <i class="fas fa-check text-xs"></i>
-                                <span>Completed</span>
-                            </span>
-                            {% elif report.status == 'failed' %}
-                            <span class="bg-error text-white px-2 py-1 rounded text-xs font-medium flex items-center space-x-1 w-fit">
-                                <i class="fas fa-times text-xs"></i>
-                                <span>Failed</span>
-                            </span>
-                            {% elif report.status == 'in_progress' %}
-                            <span class="bg-warning text-white px-2 py-1 rounded text-xs font-medium flex items-center space-x-1 w-fit">
-                                <i class="fas fa-spinner animate-spin text-xs"></i>
-                                <span>In Progress</span>
-                            </span>
+<!-- Reports Table -->
+<div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+    {% if reports %}
+    <div class="overflow-x-auto">
+        <table class="w-full" id="reports-table">
+            <thead class="bg-gray-700">
+                <tr>
+                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">App</th>
+                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Details</th>
+                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Scan Time</th>
+                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Issues</th>
+                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Status</th>
+                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-700">
+                {% for report in reports %}
+                <tr class="table-row-hover" data-report-id="{{ report.id }}">
+                    <td class="px-3 py-3">
+                        <div class="flex items-center">
+                            {% if report.app_logo %}
+                            <img src="data:image/png;base64,{{ report.app_logo }}" alt="{{ report.app_name }}" class="w-8 h-8 rounded border border-gray-600">
                             {% else %}
-                            <span class="bg-gray-600 text-white px-2 py-1 rounded text-xs font-medium flex items-center space-x-1 w-fit">
-                                <i class="fas fa-clock text-xs"></i>
-                                <span>{{ report.status.title() }}</span>
-                            </span>
-                            {% endif %}
-                        </td>
-                        <td class="px-3 py-3">
-                            <div class="flex items-center space-x-2">
-                                {% if report.status == 'completed' %}
-                                <a href="{{ url_for('view_report_page', report_id=report.id) }}" class="bg-primary hover:bg-primary-dark text-white px-3 py-2 rounded text-xs font-medium flex items-center space-x-2 transition-colors" title="View Report">
-                                    <i class="fas fa-eye"></i>
-                                    <span>View</span>
-                                </a>
-                                <button onclick="rerunAnalysis(this)" 
-                                        data-report-id="{{ report.id }}" 
-                                        data-project-path="{{ report.project_path }}"
-                                        class="bg-success hover:bg-green-600 text-white px-3 py-2 rounded text-xs font-medium flex items-center space-x-2 transition-colors" title="Rerun Analysis">
-                                    <i class="fas fa-sync-alt"></i>
-                                    <span>Rerun</span>
-                                </button>
-                                {% elif report.status == 'failed' %}
-                                <button onclick="rerunAnalysis(this)" 
-                                        data-report-id="{{ report.id }}" 
-                                        data-project-path="{{ report.project_path }}"
-                                        class="bg-warning hover:bg-yellow-600 text-white px-3 py-2 rounded text-xs font-medium flex items-center space-x-2 transition-colors" title="Retry Analysis">
-                                    <i class="fas fa-redo"></i>
-                                    <span>Retry</span>
-                                </button>
-                                {% endif %}
-                                <button onclick="deleteReport(this)" 
-                                        data-report-id="{{ report.id }}"
-                                        class="bg-error hover:bg-red-600 text-white px-3 py-2 rounded text-xs font-medium flex items-center space-x-2 transition-colors" title="Delete Report">
-                                    <i class="fas fa-trash"></i>
-                                    <span>Delete</span>
-                                </button>
+                            <div class="w-8 h-8 bg-gray-700 rounded border border-gray-600 flex items-center justify-center">
+                                <i class="fas fa-mobile-alt text-gray-400 text-sm"></i>
                             </div>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        {% else %}
-        <div class="text-center py-12">
-            <i class="fas fa-inbox text-4xl text-gray-600 mb-4"></i>
-            <h3 class="text-lg font-medium text-gray-300 mb-2">No Security Reports Found</h3>
-            <p class="text-gray-400 mb-4">Get started by submitting your first Android security analysis.</p>
-            <a href="{{ url_for('submit_request_page') }}" class="inline-flex items-center space-x-2 bg-primary hover:bg-primary-dark text-white px-6 py-3 rounded-lg text-sm font-medium transition-colors">
-                <i class="fas fa-plus"></i>
-                <span>Submit First Analysis</span>
-            </a>
-        </div>
-        {% endif %}
+                            {% endif %}
+                        </div>
+                    </td>
+                    <td class="px-3 py-3">
+                        <div class="space-y-1">
+                            <div class="font-medium text-white text-sm app-name">{{ report.app_name }}</div>
+                            <div class="text-xs text-gray-400 font-mono app-package">{{ report.package_name }}</div>
+                            <div class="text-xs text-primary">v{{ report.version }}</div>
+                        </div>
+                    </td>
+                    <td class="px-3 py-3">
+                        <div class="text-sm text-gray-300">{{ report.scan_time.strftime('%Y-%m-%d') }}</div>
+                        <div class="text-xs text-gray-400">{{ report.scan_time.strftime('%H:%M:%S') }}</div>
+                    </td>
+                    <td class="px-3 py-3">
+                        <div class="flex flex-wrap gap-1">
+                            {% if report.critical_issues > 0 %}
+                            <span class="bg-critical text-white px-2 py-1 rounded text-xs font-medium">{{ report.critical_issues }} Critical</span>
+                            {% endif %}
+                            {% if report.high_issues > 0 %}
+                            <span class="bg-high text-white px-2 py-1 rounded text-xs font-medium">{{ report.high_issues }} High</span>
+                            {% endif %}
+                            {% if report.medium_issues > 0 %}
+                            <span class="bg-medium text-white px-2 py-1 rounded text-xs font-medium">{{ report.medium_issues }} Medium</span>
+                            {% endif %}
+                            {% if report.low_issues > 0 %}
+                            <span class="bg-low text-white px-2 py-1 rounded text-xs font-medium">{{ report.low_issues }} Low</span>
+                            {% endif %}
+                            {% if report.total_issues == 0 %}
+                            <span class="bg-success text-white px-2 py-1 rounded text-xs font-medium">No Issues</span>
+                            {% endif %}
+                        </div>
+                        <div class="text-xs text-gray-400 mt-1">Total: {{ report.total_issues }}</div>
+                    </td>
+                    <td class="px-3 py-3">
+                        {% if report.status == 'completed' %}
+                        <span class="bg-success text-white px-2 py-1 rounded text-xs font-medium flex items-center space-x-1 w-fit">
+                            <i class="fas fa-check text-xs"></i>
+                            <span>Completed</span>
+                        </span>
+                        {% elif report.status == 'failed' %}
+                        <span class="bg-error text-white px-2 py-1 rounded text-xs font-medium flex items-center space-x-1 w-fit">
+                            <i class="fas fa-times text-xs"></i>
+                            <span>Failed</span>
+                        </span>
+                        {% elif report.status == 'in_progress' %}
+                        <span class="bg-warning text-white px-2 py-1 rounded text-xs font-medium flex items-center space-x-1 w-fit">
+                            <i class="fas fa-spinner animate-spin text-xs"></i>
+                            <span>In Progress</span>
+                        </span>
+                        {% else %}
+                        <span class="bg-gray-600 text-white px-2 py-1 rounded text-xs font-medium flex items-center space-x-1 w-fit">
+                            <i class="fas fa-clock text-xs"></i>
+                            <span>{{ report.status.title() }}</span>
+                        </span>
+                        {% endif %}
+                    </td>
+                    <td class="px-3 py-3">
+                        <div class="flex items-center space-x-2">
+                            {% if report.status == 'completed' %}
+                            <a href="{{ url_for('view_report_page', report_id=report.id) }}" class="bg-primary hover:bg-primary-dark text-white px-3 py-2 rounded text-xs font-medium flex items-center space-x-2 transition-colors" title="View Report">
+                                <i class="fas fa-eye"></i>
+                                <span>View</span>
+                            </a>
+                            <a href="{{ url_for('download_report_pdf', report_id=report.id) }}" class="bg-info hover:bg-cyan-600 text-white px-3 py-2 rounded text-xs font-medium flex items-center space-x-2 transition-colors" title="Download PDF Report">
+                                <i class="fas fa-download"></i>
+                                <span>PDF</span>
+                            </a>
+                            <button onclick="rerunAnalysis(this)" 
+                                    data-report-id="{{ report.id }}" 
+                                    data-project-path="{{ report.project_path }}"
+                                    class="bg-success hover:bg-green-600 text-white px-3 py-2 rounded text-xs font-medium flex items-center space-x-2 transition-colors" title="Rerun Analysis">
+                                <i class="fas fa-sync-alt"></i>
+                                <span>Rerun</span>
+                            </button>
+                            {% elif report.status == 'failed' %}
+                            <button onclick="rerunAnalysis(this)" 
+                                    data-report-id="{{ report.id }}" 
+                                    data-project-path="{{ report.project_path }}"
+                                    class="bg-warning hover:bg-yellow-600 text-white px-3 py-2 rounded text-xs font-medium flex items-center space-x-2 transition-colors" title="Retry Analysis">
+                                <i class="fas fa-redo"></i>
+                                <span>Retry</span>
+                            </button>
+                            {% endif %}
+                            <button onclick="deleteReport(this)" 
+                                    data-report-id="{{ report.id }}"
+                                    class="bg-error hover:bg-red-600 text-white px-3 py-2 rounded text-xs font-medium flex items-center space-x-2 transition-colors" title="Delete Report">
+                                <i class="fas fa-trash"></i>
+                                <span>Delete</span>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
+    {% else %}
+    <div class="text-center py-12">
+        <i class="fas fa-inbox text-4xl text-gray-600 mb-4"></i>
+        <h3 class="text-lg font-medium text-gray-300 mb-2">No Security Reports Found</h3>
+        <p class="text-gray-400 mb-4">Get started by submitting your first Android security analysis.</p>
+        <a href="{{ url_for('submit_request_page') }}" class="inline-flex items-center space-x-2 bg-primary hover:bg-primary-dark text-white px-6 py-3 rounded-lg text-sm font-medium transition-colors">
+            <i class="fas fa-plus"></i>
+            <span>Submit First Analysis</span>
+        </a>
+    </div>
+    {% endif %}
 </div>
 
 <!-- Delete Confirmation Modal -->
@@ -196,21 +176,16 @@ let reportToDelete = null;
 
 
 
-function filterReports() {
-    const searchTerm = document.getElementById('search-input').value.toLowerCase();
-    const table = document.getElementById('reports-table');
-    const rows = table.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
+function filterReports(searchTerm) {
+    searchTerm = searchTerm.toLowerCase();
+    const reports = document.querySelectorAll('.report-row');
     
-    for (let row of rows) {
-        const appName = row.querySelector('.app-name').textContent.toLowerCase();
-        const packageName = row.querySelector('.app-package').textContent.toLowerCase();
-        
-        if (appName.includes(searchTerm) || packageName.includes(searchTerm)) {
-            row.style.display = '';
-        } else {
-            row.style.display = 'none';
-        }
-    }
+    reports.forEach(report => {
+        const appName = report.querySelector('.app-name').textContent.toLowerCase();
+        const packageName = report.querySelector('.app-package').textContent.toLowerCase();
+        const shouldShow = appName.includes(searchTerm) || packageName.includes(searchTerm);
+        report.style.display = shouldShow ? '' : 'none';
+    });
 }
 
 function rerunAnalysis(button) {
@@ -290,5 +265,258 @@ async function confirmDelete() {
         closeDeleteModal();
     }
 }
+</script>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Header Styles */
+.reports-header {
+    background: linear-gradient(135deg, #1a237e 0%, #0d47a1 100%);
+    color: white;
+    padding: 2rem;
+    margin-bottom: 2rem;
+    border-radius: 0 0 1rem 1rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.reports-header-content {
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.reports-title-section {
+    margin-bottom: 1.5rem;
+}
+
+.reports-title-section h1 {
+    font-size: 2rem;
+    font-weight: 600;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.reports-title-section h1 i {
+    font-size: 1.75rem;
+    color: #64b5f6;
+}
+
+.reports-subtitle {
+    margin: 0.5rem 0 0;
+    color: #bbdefb;
+    font-size: 1rem;
+}
+
+.reports-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+/* Search Box Styles */
+.search-box {
+    position: relative;
+    flex: 1;
+    max-width: 500px;
+    min-width: 200px;
+}
+
+.search-input {
+    width: 100%;
+    padding: 0.75rem 1rem 0.75rem 2.5rem;
+    border: none;
+    border-radius: 0.5rem;
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+}
+
+.search-input::placeholder {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.search-input:focus {
+    background: rgba(255, 255, 255, 0.15);
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2);
+}
+
+.search-icon {
+    position: absolute;
+    left: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: rgba(255, 255, 255, 0.6);
+    pointer-events: none;
+}
+
+/* Action Buttons Styles */
+.action-buttons {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.25rem;
+    border-radius: 0.5rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    border: none;
+    cursor: pointer;
+    font-size: 0.95rem;
+    text-decoration: none;
+}
+
+.btn i {
+    font-size: 1rem;
+}
+
+.btn-primary {
+    background: #2196f3;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #1976d2;
+    transform: translateY(-1px);
+}
+
+.btn-info {
+    background: #00bcd4;
+    color: white;
+}
+
+.btn-info:hover {
+    background: #00acc1;
+    transform: translateY(-1px);
+}
+
+.btn-secondary {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+}
+
+.btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: translateY(-1px);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .reports-header {
+        padding: 1.5rem;
+    }
+
+    .reports-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .search-box {
+        max-width: none;
+    }
+
+    .action-buttons {
+        flex-wrap: wrap;
+    }
+
+    .btn {
+        flex: 1;
+        justify-content: center;
+    }
+}
+
+/* Add smooth animations */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.reports-header {
+    animation: fadeIn 0.3s ease-out;
+}
+
+/* Add new color for info button */
+.bg-info {
+    background-color: #00bcd4;
+}
+
+.hover\:bg-cyan-600:hover {
+    background-color: #0097a7;
+}
+
+/* Improve button spacing in action column */
+.flex.items-center.space-x-2 {
+    flex-wrap: nowrap;
+}
+
+@media (max-width: 768px) {
+    .flex.items-center.space-x-2 {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    
+    .flex.items-center.space-x-2 > * {
+        flex: 1;
+        min-width: calc(50% - 0.25rem);
+        justify-content: center;
+    }
+}
+
+/* Add tooltip styles */
+[title] {
+    position: relative;
+}
+
+[title]:hover::after {
+    content: attr(title);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 0.5rem;
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    white-space: nowrap;
+    z-index: 10;
+    margin-bottom: 0.5rem;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function refreshReports() {
+    const button = event.currentTarget;
+    const icon = button.querySelector('i');
+    
+    // Add spinning animation
+    icon.classList.add('fa-spin');
+    button.disabled = true;
+    
+    // Refresh the page after a short delay
+    setTimeout(() => {
+        window.location.reload();
+    }, 300);
+}
+
+// Initialize tooltips if you're using Bootstrap
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
+        const tooltips = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+        tooltips.forEach(tooltip => new bootstrap.Tooltip(tooltip));
+    }
+});
 </script>
 {% endblock %}

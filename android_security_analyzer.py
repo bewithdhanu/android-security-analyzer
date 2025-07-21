@@ -1431,64 +1431,258 @@ class CodePatternAnalyzer:
         """Analyze source code in directory"""
         issues = []
         
-        # Find Java and Kotlin files
-        java_kt_files = []
+        # Find all relevant files
+        analyzable_files = []
+        text_extensions = (
+            '.java', '.kt', '.xml', '.gradle', '.gradle.kts', '.properties',
+            '.json', '.yaml', '.yml', '.txt', '.md', '.env', '.config',
+            '.ini', '.conf', '.plist', '.pbxproj', '.xcconfig'
+        )
+        
         for root, dirs, files in os.walk(project_path):
             # Skip excluded directories
             if FileParser._should_exclude_directory(root, project_path):
                 continue
                 
-            # Remove excluded directories from dirs to prevent os.walk from descending into them
+            # Remove excluded directories from dirs
             dirs[:] = [d for d in dirs if not FileParser._should_exclude_directory(os.path.join(root, d), project_path)]
             
             for file in files:
-                if file.endswith(('.java', '.kt')):
+                if file.endswith(text_extensions):
                     file_path = os.path.join(root, file)
-                    java_kt_files.append(file_path)
+                    analyzable_files.append(file_path)
         
-        logger.detail(f"Found {len(java_kt_files)} Java/Kotlin files to analyze", "📄")
+        logger.detail(f"Found {len(analyzable_files)} files to analyze for security patterns", "📄")
         
-        for i, file_path in enumerate(java_kt_files, 1):
-            if i % 10 == 0 or i == len(java_kt_files):  # Log every 10th file or last file
-                logger.detail(f"Analyzing file {i}/{len(java_kt_files)}: {os.path.basename(file_path)}", "🔍")
-            file_issues = self._analyze_file(file_path, project_path)
-            if file_issues:
-                logger.warning_msg(f"Found {len(file_issues)} issues in {os.path.basename(file_path)}")
-            issues.extend(file_issues)
-        
-        # Check gradle files for API keys
-        gradle_files = FileParser.find_files(project_path, r'.*\.gradle(\.kts)?$')
-        logger.detail(f"Checking {len(gradle_files)} gradle files for security issues", "📄")
-        for gradle_file in gradle_files:
-            gradle_issues = self._analyze_gradle_security(gradle_file, project_path)
-            if gradle_issues:
-                logger.warning_msg(f"Found {len(gradle_issues)} issues in {os.path.basename(gradle_file)}")
-            issues.extend(gradle_issues)
-        
-        return issues
-    
-    def _analyze_file(self, file_path: str, project_path: str) -> List[SecurityIssue]:
-        """Analyze individual file for security issues"""
-        issues = []
-        
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
+        # Analyze each file
+        for i, file_path in enumerate(analyzable_files, 1):
+            if i % 10 == 0 or i == len(analyzable_files):
+                logger.detail(f"Analyzing file {i}/{len(analyzable_files)}: {os.path.basename(file_path)}", "🔍")
+            
+            try:
+                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read()
                 
-            lines = content.split('\n')
-            relative_path = FileParser.get_relative_path(file_path, project_path)
-            
-            # Check for API keys
-            issues.extend(self._check_api_keys(relative_path, lines))
-            
-        except Exception as e:
-            logger.error(f"Error analyzing file {file_path}: {e}")
+                relative_path = FileParser.get_relative_path(file_path, project_path)
+                
+                # Special handling for XML files
+                if file_path.endswith('.xml'):
+                    xml_issues = self._analyze_xml_security(file_path, content, relative_path)
+                    if xml_issues:
+                        logger.warning_msg(f"Found {len(xml_issues)} security issues in XML file: {os.path.basename(file_path)}")
+                    issues.extend(xml_issues)
+                else:
+                    # Regular file analysis
+                    lines = content.split('\n')
+                    
+                    # Check for API keys with context
+                    api_key_issues = self._check_api_keys_with_context(relative_path, lines)
+                    if api_key_issues:
+                        logger.warning_msg(f"Found {len(api_key_issues)} potential API keys in {os.path.basename(file_path)}")
+                    issues.extend(api_key_issues)
+                    
+                    # If it's a gradle file, also check for specific gradle security issues
+                    if file_path.endswith(('.gradle', '.gradle.kts')):
+                        gradle_issues = self._analyze_gradle_security(file_path, project_path)
+                        issues.extend(gradle_issues)
+                
+            except Exception as e:
+                logger.error(f"Error analyzing file {file_path}: {e}")
         
         return issues
     
-    def _check_api_keys(self, file_path: str, lines: List[str]) -> List[SecurityIssue]:
-        """Check for hardcoded API keys with improved context awareness"""
+    def _analyze_xml_security(self, file_path: str, content: str, relative_path: str) -> List[SecurityIssue]:
+        """Analyze XML files for security issues"""
         issues = []
+        try:
+            # First check for known security patterns in the raw content
+            # Check for dangerous configurations
+            dangerous_configs = {
+                'android:debuggable="true"': {
+                    'title': "Debug Mode Enabled",
+                    'description': "Application is debuggable which is a security risk in production",
+                    'risk_level': Config.CRITICAL,
+                    'category': "Configuration",
+                    'recommendation': "Remove android:debuggable attribute for production builds"
+                },
+                'android:allowBackup="true"': {
+                    'title': "Auto Backup Enabled",
+                    'description': "Auto backup is enabled which could expose sensitive data",
+                    'risk_level': Config.MEDIUM,
+                    'category': "Data Protection",
+                    'recommendation': "Disable auto backup or configure backup rules to exclude sensitive data"
+                },
+                'android:exported="true"': {
+                    'title': "Component Exported",
+                    'description': "Component is explicitly exported and accessible to other apps",
+                    'risk_level': Config.HIGH,
+                    'category': "Component Security",
+                    'recommendation': "Only export components that need to be accessed by other apps and implement proper security"
+                },
+                'cleartextTrafficPermitted="true"': {
+                    'title': "Cleartext Traffic Allowed",
+                    'description': "Application allows unencrypted network traffic",
+                    'risk_level': Config.HIGH,
+                    'category': "Network Security",
+                    'recommendation': "Disable cleartext traffic and use HTTPS for all network communication"
+                }
+            }
+
+            for pattern, issue_info in dangerous_configs.items():
+                if pattern in content:
+                    issues.append(SecurityIssue(
+                        title=issue_info['title'],
+                        description=issue_info['description'],
+                        risk_level=issue_info['risk_level'],
+                        category=issue_info['category'],
+                        file_path=relative_path,
+                        recommendation=issue_info['recommendation']
+                    ))
+
+            # Now parse as XML to check values
+            import xml.etree.ElementTree as ET
+            root = ET.fromstring(content)
+
+            # Check all text content and attribute values recursively
+            for elem in root.iter():
+                # Check element text
+                if elem.text and elem.text.strip():
+                    self._check_value_for_secrets(elem.text.strip(), elem, relative_path, issues)
+
+                # Check all attribute values
+                for attr_value in elem.attrib.values():
+                    if attr_value and attr_value.strip():
+                        self._check_value_for_secrets(attr_value.strip(), elem, relative_path, issues)
+
+        except ET.ParseError:
+            # Not a valid XML file or contains syntax errors
+            pass
+        except Exception as e:
+            logger.error(f"Error analyzing XML file {file_path}: {e}")
+
+        return issues
+
+    def _check_value_for_secrets(self, value: str, elem: ET.Element, file_path: str, issues: List[SecurityIssue]):
+        """Check a value for potential secrets or sensitive data"""
+        # Additional patterns for API keys and secrets
+        additional_patterns = {
+            'GitHub PAT': r'ghp_[0-9a-zA-Z]{36}',
+            'GitHub Fine-grained PAT': r'github_pat_[0-9a-zA-Z]{82}',
+            'Slack Token': r'xox[baprs]-([0-9a-zA-Z]{10,48})',
+            'Firebase Config': r'AIza[0-9A-Za-z\-_]{35}',
+            'Google API Key': r'AIza[0-9A-Za-z\-_]{35}',
+            'Stripe Live Key': r'sk_live_[0-9a-zA-Z]{24}',
+            'Stripe Public Key': r'pk_live_[0-9a-zA-Z]{24}',
+            'AWS Access Key': r'AKIA[0-9A-Z]{16}',
+            'Generic Secret': r'[0-9a-f]{32,40}'
+        }
+
+        # Check for known API key patterns
+        for key_type, pattern in additional_patterns.items():
+            matches = re.findall(pattern, value)
+            for match in matches:
+                issues.append(SecurityIssue(
+                    title=f"Hardcoded {key_type}",
+                    description=f"Found hardcoded {key_type} in XML file",
+                    risk_level=Config.CRITICAL,
+                    category="API Security",
+                    file_path=file_path,
+                    line_number=self._get_line_number(value, elem),
+                    code_snippet=value[:50] + "..." if len(value) > 50 else value,
+                    recommendation=f"Move {key_type} to secure storage or environment variables"
+                ))
+
+        # Check for potential sensitive values
+        sensitive_value_patterns = [
+            (r'(?i)password\s*[:=]\s*["\']?[^"\'\s]+["\']?', "Password Value"),
+            (r'(?i)secret\s*[:=]\s*["\']?[^"\'\s]+["\']?', "Secret Value"),
+            (r'(?i)api[-_]?key\s*[:=]\s*["\']?[^"\'\s]+["\']?', "API Key"),
+            (r'(?i)token\s*[:=]\s*["\']?[^"\'\s]+["\']?', "Token Value"),
+            (r'(?i)auth[-_]?token\s*[:=]\s*["\']?[^"\'\s]+["\']?', "Auth Token"),
+            (r'(?i)private[-_]?key\s*[:=]\s*["\']?[^"\'\s]+["\']?', "Private Key"),
+            (r'(?i)bearer\s+[^"\'\s]+', "Bearer Token")
+        ]
+
+        for pattern, issue_type in sensitive_value_patterns:
+            if re.search(pattern, value):
+                # Only report if the value looks like a real secret (not a placeholder or reference)
+                if not self._is_likely_false_positive_value(value):
+                    issues.append(SecurityIssue(
+                        title=f"Hardcoded {issue_type}",
+                        description=f"Found potentially sensitive {issue_type.lower()} in XML file",
+                        risk_level=Config.HIGH,
+                        category="API Security",
+                        file_path=file_path,
+                        line_number=self._get_line_number(value, elem),
+                        code_snippet=value[:50] + "..." if len(value) > 50 else value,
+                        recommendation=f"Move {issue_type.lower()} to secure storage"
+                    ))
+
+    def _is_likely_false_positive_value(self, value: str) -> bool:
+        """Check if a value is likely a false positive"""
+        # Skip obvious non-secrets
+        false_positive_indicators = [
+            r'@string/',          # Resource reference
+            r'@\w+/',            # Any resource reference
+            r'\$\{.*\}',         # Variable placeholder
+            r'%[sd]',            # Format specifiers
+            r'<!--.*-->',        # XML comments
+            r'^\s*$',            # Empty or whitespace
+            r'^[a-z_]+$',        # Simple lowercase identifier
+            r'^R\.',             # R.string reference
+            r'placeholder',      # Obvious placeholder
+            r'example',          # Example text
+            r'default',          # Default text
+            r'[<>/]',            # XML/HTML tags
+            r'^https?://',       # URLs
+            r'^tel:',            # Phone number links
+            r'^mailto:',         # Email links
+            r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$'  # IP addresses
+        ]
+
+        return any(re.search(pattern, value, re.IGNORECASE) for pattern in false_positive_indicators)
+    
+    def _get_line_number(self, content: str, element: ET.Element) -> int:
+        """Get line number for an XML element"""
+        try:
+            # Convert element to string
+            element_str = ET.tostring(element, encoding='unicode')
+            # Find the element in the content
+            lines = content.split('\n')
+            for i, line in enumerate(lines, 1):
+                if any(part in line for part in element_str.split()):
+                    return i
+        except:
+            pass
+        return 0
+    
+    def _check_api_keys_with_context(self, file_path: str, lines: List[str]) -> List[SecurityIssue]:
+        """Check for API keys with improved context awareness"""
+        issues = []
+        
+        # Additional patterns for modern API keys
+        additional_patterns = {
+            'GitHub PAT': r'ghp_[0-9a-zA-Z]{36}',
+            'GitHub Fine-grained PAT': r'github_pat_[0-9a-zA-Z]{82}',
+            'Slack Token': r'xox[baprs]-([0-9a-zA-Z]{10,48})',
+            'Firebase Config': r'firebase.*["\']\s*:\s*["\'](AIza[0-9A-Za-z\-_]{35})["\']',
+            'Google API Key': r'AIza[0-9A-Za-z\-_]{35}',
+            'Stripe Live Key': r'sk_live_[0-9a-zA-Z]{24}',
+            'Stripe Public Key': r'pk_live_[0-9a-zA-Z]{24}',
+            'AWS Access Key': r'AKIA[0-9A-Z]{16}',
+            'Generic Secret': r'[0-9a-f]{32,40}'
+        }
+        
+        # Context patterns that indicate API key assignments
+        context_patterns = [
+            r'(?:api[_-]?key|apikey|secret|token|password|pwd)\s*[=:]\s*["\']([A-Za-z0-9]{16,})["\']',
+            r'Authorization\s*[=:]\s*["\']([A-Za-z0-9+/]{20,})["\']',
+            r'Bearer\s+([A-Za-z0-9\-._~+/]+=*)',
+            r'(?:client[_-]?secret|client[_-]?id)\s*[=:]\s*["\']([A-Za-z0-9]{16,})["\']',
+            r'(?:firebase|fb).*(?:key|secret|token)\s*[=:]\s*["\']([^"\']+)["\']',
+            r'(?:oauth|auth).*(?:key|secret|token)\s*[=:]\s*["\']([^"\']+)["\']',
+            r'private_key\s*[=:]\s*["\']([^"\']+)["\']'
+        ]
         
         for line_num, line in enumerate(lines, 1):
             line_stripped = line.strip()
@@ -1497,52 +1691,56 @@ class CodePatternAnalyzer:
             if self._is_likely_false_positive(line_stripped):
                 continue
             
-            # Check specific API key patterns (high confidence)
-            for pattern in Config.API_KEY_PATTERNS:
+            # Check for known API key patterns
+            for key_type, pattern in additional_patterns.items():
                 matches = re.findall(pattern, line)
                 for match in matches:
-                    # Additional validation for generic patterns
-                    if pattern == r'[0-9a-f]{32}' and not self._is_in_assignment_context(line, match):
-                        continue
-                        
-                    issues.append(SecurityIssue(
-                        title="Hardcoded API Key",
-                        description=f"Potential API key found: {match[:10]}...",
-                        risk_level=Config.CRITICAL,
-                        category="API Security",
-                        file_path=file_path,
-                        line_number=line_num,
-                        code_snippet=line_stripped,
-                        recommendation="Move API keys to environment variables or secure storage"
-                    ))
-            
-            # Check context-aware patterns (medium confidence)
-            for pattern in Config.API_KEY_CONTEXT_PATTERNS:
-                matches = re.findall(pattern, line, re.IGNORECASE)
-                for match in matches:
-                    # Extract the actual key value from the match
-                    key_value = match if isinstance(match, str) else match[0] if match else ""
-                    if len(key_value) >= 16:  # Minimum reasonable API key length
+                    # Get context (previous and next lines if available)
+                    context_before = lines[max(0, line_num-3):line_num-1]
+                    context_after = lines[line_num:min(len(lines), line_num+2)]
+                    
+                    # Only report if it looks like a real key in assignment context
+                    if self._is_in_assignment_context(line, match) or any(
+                        re.search(cp, '\n'.join(context_before + [line] + context_after), re.IGNORECASE)
+                        for cp in context_patterns
+                    ):
                         issues.append(SecurityIssue(
-                            title="Hardcoded API Key",
-                            description=f"Potential API key found: {key_value[:10]}...",
-                            risk_level=Config.HIGH,  # Slightly lower confidence
+                            title=f"Hardcoded {key_type}",
+                            description=f"Found hardcoded {key_type} in code",
+                            risk_level=Config.CRITICAL,
                             category="API Security",
                             file_path=file_path,
                             line_number=line_num,
                             code_snippet=line_stripped,
-                            recommendation="Move API keys to environment variables or secure storage"
+                            recommendation=f"Move {key_type} to environment variables or secure storage"
+                        ))
+            
+            # Check for generic patterns that look like API keys
+            for pattern in context_patterns:
+                matches = re.findall(pattern, line, re.IGNORECASE)
+                for match in matches:
+                    key_value = match if isinstance(match, str) else match[0] if match else ""
+                    if len(key_value) >= 16:  # Minimum reasonable API key length
+                        issues.append(SecurityIssue(
+                            title="Potential Secret Found",
+                            description=f"Found potential API key or secret: {key_value[:10]}...",
+                            risk_level=Config.HIGH,
+                            category="API Security",
+                            file_path=file_path,
+                            line_number=line_num,
+                            code_snippet=line_stripped,
+                            recommendation="Move sensitive data to environment variables or secure storage"
                         ))
         
         return issues
     
     def _is_likely_false_positive(self, line: str) -> bool:
-        """Check if line is likely a false positive for API key detection"""
+        """Enhanced false positive detection"""
         line_lower = line.lower()
         
-        # Skip method calls, function definitions, and class names
+        # Skip obvious non-key content
         false_positive_patterns = [
-            r'\w+\s*\(',           # Method calls like "methodName("
+            r'\w+\s*\(',           # Method calls
             r'(fun|function|def|class|interface|public|private|protected)\s+\w+',  # Declarations
             r'//.*',               # Comments
             r'/\*.*\*/',          # Block comments
@@ -1551,7 +1749,14 @@ class CodePatternAnalyzer:
             r'@\w+',               # Annotations
             r'^\s*\*',             # Javadoc comments
             r'Log\.[deiw]',        # Log statements
-            r'\.kt$|\.java$',      # File extensions in strings
+            r'\.kt$|\.java$',      # File extensions
+            r'^\s*#',              # Shell/properties comments
+            r'^\s*<!--',           # XML comments
+            r'^\s*---',            # YAML markers
+            r'"?use strict"?;?$',  # JavaScript strict mode
+            r'^\s*\{?\s*"[\w-]+"\s*:\s*\{',  # JSON object start
+            r'^\s*version\s*[:=]',  # Version declarations
+            r'implementation\s+["\']',  # Gradle dependencies
         ]
         
         for pattern in false_positive_patterns:
@@ -1560,26 +1765,31 @@ class CodePatternAnalyzer:
         
         # Skip lines that are clearly method names or identifiers
         words = re.findall(r'\b[A-Za-z][A-Za-z0-9]*\b', line)
-        if len(words) == 1 and len(words[0]) > 30:  # Single long word (likely method name)
-            # Check if it follows camelCase or contains common method suffixes
-            word = words[0]
-            if (re.search(r'[a-z][A-Z]', word) or  # camelCase
-                word.endswith(('Activity', 'Service', 'Fragment', 'Adapter', 'Manager', 'Helper', 
-                              'Controller', 'Handler', 'Listener', 'Callback', 'Data', 'Info',
-                              'Details', 'Settings', 'Config', 'Utils', 'Builder'))):
+        if len(words) == 1 and len(words[0]) > 30:
+            if (re.search(r'[a-z][A-Z]', words[0]) or  # camelCase
+                words[0].endswith(('Activity', 'Service', 'Fragment', 'Adapter', 'Manager', 
+                                 'Helper', 'Controller', 'Handler', 'Listener', 'Callback',
+                                 'Data', 'Info', 'Details', 'Settings', 'Config', 'Utils',
+                                 'Builder'))):
                 return True
         
         return False
     
     def _is_in_assignment_context(self, line: str, match: str) -> bool:
-        """Check if the match appears in an assignment context"""
+        """Enhanced assignment context detection"""
         # Look for assignment patterns around the match
         assignment_patterns = [
-            r'\w+\s*[=:]\s*["\']?' + re.escape(match),
-            r'["\']' + re.escape(match) + r'["\']',
-            r'String\s+\w+\s*=.*' + re.escape(match),
-            r'val\s+\w+\s*=.*' + re.escape(match),
-            r'var\s+\w+\s*=.*' + re.escape(match),
+            r'\w+\s*[=:]\s*["\']?' + re.escape(match),  # Basic assignment
+            r'["\']' + re.escape(match) + r'["\']',     # String literal
+            r'String\s+\w+\s*=.*' + re.escape(match),   # Java String
+            r'val\s+\w+\s*=.*' + re.escape(match),      # Kotlin val
+            r'var\s+\w+\s*=.*' + re.escape(match),      # Kotlin var
+            r'const\s+\w+\s*=.*' + re.escape(match),    # JavaScript const
+            r'let\s+\w+\s*=.*' + re.escape(match),      # JavaScript let
+            r'\w+:\s*["\']?' + re.escape(match),        # YAML/JSON style
+            r'export\s+(?:const|let|var)\s+\w+\s*=.*' + re.escape(match),  # JavaScript export
+            r'-D\w+=.*' + re.escape(match),             # Command line argument
+            r'System\.setProperty\([^,]+,\s*["\']?' + re.escape(match),    # Java system property
         ]
         
         for pattern in assignment_patterns:
@@ -1652,114 +1862,6 @@ import logging
 class ReportGenerator:
     """Generate security analysis reports with enhanced UI"""
     
-    def generate_json_report(self, result, output_path: str):
-        """Generate comprehensive JSON report with complete categorization"""
-        
-        # Group issues by category with fallback to "Miscellaneous"
-        def group_issues_by_category_with_fallback(issues):
-            grouped = {}
-            for issue in issues:
-                category = issue.category if issue.category else "Miscellaneous"
-                if category not in grouped:
-                    grouped[category] = []
-                grouped[category].append(issue)
-            return grouped
-        
-        # Define category information (same as HTML report)
-        category_info = {
-            'Billing Compliance': {'icon': 'fas fa-credit-card', 'priority': 1},
-            'Network Security': {'icon': 'fas fa-network-wired', 'priority': 2},
-            'Permissions': {'icon': 'fas fa-key', 'priority': 3},
-            'Data Protection': {'icon': 'fas fa-shield-alt', 'priority': 4},
-            'Code Protection': {'icon': 'fas fa-code', 'priority': 5},
-            'API Security': {'icon': 'fas fa-plug', 'priority': 6},
-            'Information Disclosure': {'icon': 'fas fa-eye-slash', 'priority': 7},
-            'Suspicious Domains': {'icon': 'fas fa-globe', 'priority': 8},
-            'Security Keywords': {'icon': 'fas fa-search', 'priority': 9},
-            'Compliance': {'icon': 'fas fa-clipboard-check', 'priority': 10},
-            'Dependencies': {'icon': 'fas fa-cubes', 'priority': 11},
-            'Miscellaneous': {'icon': 'fas fa-question-circle', 'priority': 999}  # Fallback category
-        }
-        
-        # Group and organize issues by category (including fallback)
-        grouped_issues = group_issues_by_category_with_fallback(result.issues)
-        
-        # Sort categories by priority and severity (same logic as HTML)
-        sorted_categories = sorted(grouped_issues.keys(), 
-            key=lambda x: (category_info.get(x, {'priority': 999})['priority'], 
-                          -({'CRITICAL': 4, 'HIGH': 3, 'MEDIUM': 2, 'LOW': 1}.get(
-                              max([issue.risk_level for issue in grouped_issues[x]], 
-                                  key=lambda r: {'CRITICAL': 4, 'HIGH': 3, 'MEDIUM': 2, 'LOW': 1}.get(r, 0)), 0))))
-        
-        # Build categorized issues structure
-        categorized_issues = []
-        for category in sorted_categories:
-            category_issues = grouped_issues[category]
-            
-            # Calculate category risk level based on highest severity
-            category_risk = max([issue.risk_level for issue in category_issues], 
-                              key=lambda r: {'CRITICAL': 4, 'HIGH': 3, 'MEDIUM': 2, 'LOW': 1}.get(r, 0))
-            
-            category_data = {
-                'category': category,
-                'risk_level': category_risk,
-                'priority': category_info.get(category, {'priority': 999})['priority'],
-                'icon': category_info.get(category, {'icon': 'fas fa-exclamation-triangle'})['icon'],
-                'issue_count': len(category_issues),
-                'issues': [asdict(issue) for issue in category_issues]
-            }
-            categorized_issues.append(category_data)
-        
-        # Convert app metadata if available
-        app_metadata_dict = None
-        if result.app_metadata:
-            app_metadata_dict = asdict(result.app_metadata)
-        
-        # Filter general recommendations (not related to specific issues)
-        # Keep only project-level recommendations, not issue-specific ones
-        general_recommendations = []
-        for rec in result.recommendations:
-            # Skip recommendations that are just repeating issue-specific advice
-            if not any(issue.recommendation in rec for issue in result.issues):
-                general_recommendations.append(rec)
-        
-        # Build comprehensive report data
-        report_data = {
-            'metadata': {
-                'project_path': result.project_path,
-                'scan_time': result.scan_time.isoformat(),
-                'total_issues': len(result.issues),
-                'total_categories': len(categorized_issues),
-                'analyzer_version': '1.0.0'
-            },
-            'app_metadata': app_metadata_dict,
-            'summary': {
-                'by_severity': result.summary,
-                'by_category': {cat['category']: cat['issue_count'] for cat in categorized_issues},
-                'highest_risk_categories': [
-                    cat['category'] for cat in categorized_issues 
-                    if cat['risk_level'] in ['CRITICAL', 'HIGH']
-                ]
-            },
-            'issues': {
-                'categorized': categorized_issues,
-                'total_count': len(result.issues)
-            },
-            'dependencies': {
-                'total_count': len(result.dependencies),
-                'by_risk': {
-                    'critical': len([d for d in result.dependencies if getattr(d, 'risk_level', 'LOW') == 'CRITICAL']),
-                    'high': len([d for d in result.dependencies if getattr(d, 'risk_level', 'LOW') == 'HIGH']),
-                    'medium': len([d for d in result.dependencies if getattr(d, 'risk_level', 'LOW') == 'MEDIUM']),
-                    'low': len([d for d in result.dependencies if getattr(d, 'risk_level', 'LOW') == 'LOW'])
-                },
-                'details': [asdict(dep) for dep in result.dependencies]
-            },
-            'recommendations': {
-                'general': general_recommendations  # Only non-issue-specific recommendations
-            }
-        }
-        
     def prepare_json_data(self, result) -> dict:
         """Prepare JSON report data without writing to file"""
         # Group issues by category with fallback to "Miscellaneous"
@@ -1791,7 +1893,7 @@ class ReportGenerator:
         # Group and organize issues by category (including fallback)
         grouped_issues = group_issues_by_category_with_fallback(result.issues)
         
-        # Sort categories by priority and severity (same logic as HTML)
+        # Sort categories by priority and severity
         sorted_categories = sorted(grouped_issues.keys(), 
             key=lambda x: (category_info.get(x, {'priority': 999})['priority'], 
                           -({'CRITICAL': 4, 'HIGH': 3, 'MEDIUM': 2, 'LOW': 1}.get(
@@ -1822,7 +1924,7 @@ class ReportGenerator:
         if result.app_metadata:
             app_metadata_dict = asdict(result.app_metadata)
         
-        # Filter general recommendations (not related to specific issues)
+        # Filter general recommendations
         general_recommendations = []
         for rec in result.recommendations:
             # Skip recommendations that are just repeating issue-specific advice
@@ -1862,7 +1964,7 @@ class ReportGenerator:
                 'details': [asdict(dep) for dep in result.dependencies]
             },
             'recommendations': {
-                'general': general_recommendations  # Only non-issue-specific recommendations
+                'general': general_recommendations
             }
         }
         
@@ -2110,9 +2212,8 @@ class AndroidSecurityAnalyzer:
 
 def main():
     """Main entry point"""
-    parser = argparse.ArgumentParser(description='Android Security Analyzer - JSON Report Generator')
+    parser = argparse.ArgumentParser(description='Android Security Analyzer')
     parser.add_argument('project_path', help='Path to Android project')
-    parser.add_argument('--output', '-o', default='security_report', help='Output file prefix (will generate .json)')
     
     args = parser.parse_args()
     
@@ -2123,11 +2224,6 @@ def main():
     async def run_analysis():
         analyzer = AndroidSecurityAnalyzer()
         result = await analyzer.analyze_async(args.project_path)
-        
-        # Generate JSON report only
-        json_filename = f"{args.output}.json"
-        analyzer.report_generator.generate_json_report(result, json_filename)
-        
         
         # Print summary
         logger.separator()

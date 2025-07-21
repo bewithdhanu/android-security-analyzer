@@ -86,6 +86,10 @@
                     <i class="fas fa-list text-xs"></i>
                     <span>Reports</span>
                 </a>
+                <a href="{{ url_for('compare_reports_page') }}" class="flex items-center space-x-1 px-3 py-1 rounded text-sm hover:bg-gray-700 transition-colors {% if active_page == 'compare' %}bg-gray-700 text-primary{% else %}text-gray-300{% endif %}">
+                    <i class="fas fa-code-compare text-xs"></i>
+                    <span>Compare</span>
+                </a>
                 <a href="{{ url_for('submit_request_page') }}" class="flex items-center space-x-1 px-3 py-1 rounded text-sm hover:bg-gray-700 transition-colors {% if active_page == 'submit' %}bg-gray-700 text-primary{% else %}text-gray-300{% endif %}">
                     <i class="fas fa-plus text-xs"></i>
                     <span>New Analysis</span>

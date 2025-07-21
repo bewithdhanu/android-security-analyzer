@@ -203,6 +203,24 @@ async def list_reports(request: Request):
     finally:
         db.close()
 
+@app.get("/reports/compare", response_class=HTMLResponse)
+async def compare_reports_page(request: Request):
+    """Show report comparison page"""
+    db = SessionLocal()
+    try:
+        reports = db.query(SecurityReport)\
+            .filter(SecurityReport.status == "completed")\
+            .order_by(SecurityReport.scan_time.desc())\
+            .all()
+        
+        return templates.TemplateResponse("compare_reports.html", {
+            "request": request,
+            "reports": reports,
+            "active_page": "reports"
+        })
+    finally:
+        db.close()
+
 @app.get("/submit", response_class=HTMLResponse)
 async def submit_request_page(request: Request):
     """Show submit analysis request form"""
@@ -242,91 +260,78 @@ async def submit_analysis(
         # Validate project path
         if not os.path.exists(project_path):
             db = SessionLocal()
-            try:
-                recent_projects = db.query(SecurityReport)\
-                    .filter(SecurityReport.status == "completed")\
-                    .order_by(SecurityReport.scan_time.desc())\
-                    .limit(5).all()
+            recent_projects = db.query(SecurityReport)\
+                .filter(SecurityReport.status == "completed")\
+                .order_by(SecurityReport.scan_time.desc())\
+                .limit(5).all()
                 
-                return templates.TemplateResponse("submit_request.html", {
-                    "request": request,
-                    "active_page": "submit",
-                    "form_data": {"project_path": project_path, "app_name": app_name},
-                    "errors": {"project_path": "Project path does not exist"},
-                    "recent_projects": recent_projects
-                })
-            finally:
-                db.close()
+            return templates.TemplateResponse("submit_request.html", {
+                "request": request,
+                "active_page": "submit",
+                "form_data": {"project_path": project_path, "app_name": app_name},
+                "errors": {"project_path": "Project path does not exist"},
+                "recent_projects": recent_projects
+            })
         
         # Run analysis
         from android_security_analyzer import AndroidSecurityAnalyzer
         
         # Create pending record
         db = SessionLocal()
-        try:
-            pending_report = SecurityReport(
-                app_name=app_name or "Unknown",
-                package_name="Unknown",
-                version="Unknown",
-                project_path=project_path,
-                status="in_progress",
-                total_issues=0
-            )
-            db.add(pending_report)
+        pending_report = SecurityReport(
+            app_name=app_name or "Unknown",
+            package_name="Unknown",
+            version="Unknown",
+            project_path=project_path,
+            status="in_progress",
+            total_issues=0
+        )
+        db.add(pending_report)
+        db.commit()
+        db.refresh(pending_report)
+        
+        # Get the ID after commit and refresh
+        report_id = pending_report.id
+        
+        # Run analysis
+        analyzer = AndroidSecurityAnalyzer(project_path)
+        analysis_result = await analyzer.analyze_async(project_path)
+        report_data = analyzer.report_generator.prepare_json_data(analysis_result)
+        
+        # Update database record with results - use a fresh query to avoid stale data
+        pending_report = db.query(SecurityReport).filter(SecurityReport.id == report_id).first()
+        if pending_report:
+            pending_report.app_name = report_data["app_metadata"]["app_name"]
+            pending_report.package_name = report_data["app_metadata"]["package_name"]
+            pending_report.version = report_data["app_metadata"]["version_name"]
+            pending_report.total_issues = report_data["metadata"]["total_issues"]
+            pending_report.critical_issues = report_data["summary"]["by_severity"]["critical"]
+            pending_report.high_issues = report_data["summary"]["by_severity"]["high"]
+            pending_report.medium_issues = report_data["summary"]["by_severity"]["medium"]
+            pending_report.low_issues = report_data["summary"]["by_severity"]["low"]
+            pending_report.app_logo = report_data["app_metadata"].get("app_logo_base64", "")
+            pending_report.status = "completed"
+            pending_report.report_data = json.dumps(report_data)
+            
             db.commit()
-            db.refresh(pending_report)
             
-            # Get the ID after commit and refresh
-            report_id = pending_report.id
+            # Redirect to report view
+            return RedirectResponse(url=f"/reports/{report_id}", status_code=303)
+        else:
+            raise Exception("Could not find pending report after creation")
             
-            # Run analysis
-            analyzer = AndroidSecurityAnalyzer(project_path)
-            analysis_result = await analyzer.analyze_async(project_path)
-            report_data = analyzer.report_generator.prepare_json_data(analysis_result)
-            
-            # Save to file in project directory  
-            output_file = os.path.join(project_path, "security_report.json")
-            with open(output_file, 'w') as f:
-                json.dump(report_data, f, indent=2, default=str)
-            
-            # Update database record with results - use a fresh query to avoid stale data
-            pending_report = db.query(SecurityReport).filter(SecurityReport.id == report_id).first()
-            if pending_report:
-                pending_report.app_name = report_data["app_metadata"]["app_name"]
-                pending_report.package_name = report_data["app_metadata"]["package_name"]
-                pending_report.version = report_data["app_metadata"]["version_name"]
-                pending_report.total_issues = report_data["metadata"]["total_issues"]
-                pending_report.critical_issues = report_data["summary"]["by_severity"]["critical"]
-                pending_report.high_issues = report_data["summary"]["by_severity"]["high"]
-                pending_report.medium_issues = report_data["summary"]["by_severity"]["medium"]
-                pending_report.low_issues = report_data["summary"]["by_severity"]["low"]
-                pending_report.app_logo = report_data["app_metadata"].get("app_logo_base64", "")
-                pending_report.status = "completed"
-                pending_report.report_data = json.dumps(report_data)
-                
-                db.commit()
-                
-                # Redirect to report view
-                return RedirectResponse(url=f"/reports/{report_id}", status_code=303)
-            else:
-                raise Exception("Could not find pending report after creation")
-                
-        except Exception as analysis_error:
-            # Mark report as failed if it exists
-            if pending_report and hasattr(pending_report, 'id'):
-                try:
+    except Exception as e:
+        # Mark report as failed if it exists
+        if pending_report and hasattr(pending_report, 'id'):
+            try:
+                if db:
                     failed_report = db.query(SecurityReport).filter(SecurityReport.id == pending_report.id).first()
                     if failed_report:
                         failed_report.status = "failed"
                         db.commit()
-                except Exception:
-                    pass  # Don't let cleanup errors override the main error
-            raise analysis_error
-        finally:
-            if db:
-                db.close()
-            
-    except Exception as e:
+            except Exception:
+                pass  # Don't let cleanup errors override the main error
+        
         # Get recent projects for error page
         recent_projects = []
         try:
@@ -346,6 +351,9 @@ async def submit_analysis(
             "messages": [("error", f"Analysis failed: {str(e)}")],
             "recent_projects": recent_projects
         })
+    finally:
+        if db:
+            db.close()
 
 def extract_keyword_from_title(title: str, category: str) -> str:
     """Extract keyword/domain from issue title for pattern matching"""
@@ -558,79 +566,70 @@ async def submit_analysis_request(request: AnalysisRequest):
         
         # Create pending record
         db = SessionLocal()
-        try:
-            pending_report = SecurityReport(
-                app_name=request.app_name or "Unknown",
-                package_name="Unknown",
-                version="Unknown",
-                project_path=request.project_path,
-                status="in_progress",
-                total_issues=0
-            )
-            db.add(pending_report)
+        pending_report = SecurityReport(
+            app_name=request.app_name or "Unknown",
+            package_name="Unknown",
+            version="Unknown",
+            project_path=request.project_path,
+            status="in_progress",
+            total_issues=0
+        )
+        db.add(pending_report)
+        db.commit()
+        db.refresh(pending_report)
+        
+        # Get the ID after commit and refresh
+        report_id = pending_report.id
+        
+        # Run analysis
+        analyzer = AndroidSecurityAnalyzer(request.project_path)
+        analysis_result = await analyzer.analyze_async(request.project_path)
+        report_data = analyzer.report_generator.prepare_json_data(analysis_result)
+        
+        # Update database record with results - use a fresh query to avoid stale data
+        pending_report = db.query(SecurityReport).filter(SecurityReport.id == report_id).first()
+        if pending_report:
+            pending_report.app_name = report_data["app_metadata"]["app_name"]
+            pending_report.package_name = report_data["app_metadata"]["package_name"]
+            pending_report.version = report_data["app_metadata"]["version_name"]
+            pending_report.total_issues = report_data["metadata"]["total_issues"]
+            pending_report.critical_issues = report_data["summary"]["by_severity"]["critical"]
+            pending_report.high_issues = report_data["summary"]["by_severity"]["high"]
+            pending_report.medium_issues = report_data["summary"]["by_severity"]["medium"]
+            pending_report.low_issues = report_data["summary"]["by_severity"]["low"]
+            pending_report.app_logo = report_data["app_metadata"].get("app_logo_base64", "")
+            pending_report.status = "completed"
+            pending_report.report_data = json.dumps(report_data)
+            
             db.commit()
-            db.refresh(pending_report)
             
-            # Get the ID after commit and refresh
-            report_id = pending_report.id
+            # Get values for response
+            total_issues = pending_report.total_issues
             
-            # Run analysis
-            analyzer = AndroidSecurityAnalyzer(request.project_path)
-            analysis_result = await analyzer.analyze_async(request.project_path)
-            report_data = analyzer.report_generator.prepare_json_data(analysis_result)
+            return {
+                "status": "success",
+                "message": "Analysis completed successfully",
+                "report_id": report_id,
+                "total_issues": total_issues
+            }
+        else:
+            raise Exception("Could not find pending report after creation")
             
-            # Save to file in project directory  
-            import json
-            output_file = os.path.join(request.project_path, "security_report.json")
-            with open(output_file, 'w') as f:
-                json.dump(report_data, f, indent=2, default=str)
-            
-            # Update database record with results - use a fresh query to avoid stale data
-            pending_report = db.query(SecurityReport).filter(SecurityReport.id == report_id).first()
-            if pending_report:
-                pending_report.app_name = report_data["app_metadata"]["app_name"]
-                pending_report.package_name = report_data["app_metadata"]["package_name"]
-                pending_report.version = report_data["app_metadata"]["version_name"]
-                pending_report.total_issues = report_data["metadata"]["total_issues"]
-                pending_report.critical_issues = report_data["summary"]["by_severity"]["critical"]
-                pending_report.high_issues = report_data["summary"]["by_severity"]["high"]
-                pending_report.medium_issues = report_data["summary"]["by_severity"]["medium"]
-                pending_report.low_issues = report_data["summary"]["by_severity"]["low"]
-                pending_report.app_logo = report_data["app_metadata"].get("app_logo_base64", "")
-                pending_report.status = "completed"
-                pending_report.report_data = json.dumps(report_data)
-                
-                db.commit()
-                
-                # Get values for response
-                total_issues = pending_report.total_issues
-                
-                return {
-                    "status": "success",
-                    "message": "Analysis completed successfully",
-                    "report_id": report_id,
-                    "total_issues": total_issues
-                }
-            else:
-                raise Exception("Could not find pending report after creation")
-            
-        except Exception as analysis_error:
-            # Mark report as failed if it exists
-            if pending_report and hasattr(pending_report, 'id'):
-                try:
+    except Exception as e:
+        # Mark report as failed if it exists
+        if pending_report and hasattr(pending_report, 'id'):
+            try:
+                if db:
                     failed_report = db.query(SecurityReport).filter(SecurityReport.id == pending_report.id).first()
                     if failed_report:
                         failed_report.status = "failed"
                         db.commit()
-                except Exception:
-                    pass  # Don't let cleanup errors override the main error
-            raise analysis_error
-        finally:
-            if db:
-                db.close()
-            
-    except Exception as e:
+            except Exception:
+                pass  # Don't let cleanup errors override the main error
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+    finally:
+        if db:
+            db.close()
 
 @app.get("/api/reports", response_model=List[SecurityReportResponse])
 async def get_all_reports():
