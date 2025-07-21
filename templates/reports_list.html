@@ -28,7 +28,10 @@
             </thead>
             <tbody class="divide-y divide-gray-700">
                 {% for report in reports %}
-                <tr class="table-row-hover" data-report-id="{{ report.id }}">
+                <tr class="table-row-hover {% if report.status == 'completed' %}cursor-pointer hover:bg-gray-700{% endif %}" 
+                    data-report-id="{{ report.id }}" 
+                    data-href="{% if report.status == 'completed' %}{{ url_for('view_report_page', report_id=report.id) }}{% endif %}"
+                    onclick="handleRowClick(event, this)">
                     <td class="px-3 py-3">
                         <div class="flex items-center">
                             {% if report.app_logo %}
@@ -94,23 +97,17 @@
                         </span>
                         {% endif %}
                     </td>
-                    <td class="px-3 py-3">
+                    <td class="px-3 py-3" onclick="event.stopPropagation()">
                         <div class="flex items-center space-x-2">
                             {% if report.status == 'completed' %}
-                            <a href="{{ url_for('view_report_page', report_id=report.id) }}" class="bg-primary hover:bg-primary-dark text-white px-3 py-2 rounded text-xs font-medium flex items-center space-x-2 transition-colors" title="View Report">
-                                <i class="fas fa-eye"></i>
-                                <span>View</span>
-                            </a>
                             <a href="{{ url_for('download_report_pdf', report_id=report.id) }}" class="bg-info hover:bg-cyan-600 text-white px-3 py-2 rounded text-xs font-medium flex items-center space-x-2 transition-colors" title="Download PDF Report">
                                 <i class="fas fa-download"></i>
-                                <span>PDF</span>
                             </a>
                             <button onclick="rerunAnalysis(this)" 
                                     data-report-id="{{ report.id }}" 
                                     data-project-path="{{ report.project_path }}"
                                     class="bg-success hover:bg-green-600 text-white px-3 py-2 rounded text-xs font-medium flex items-center space-x-2 transition-colors" title="Rerun Analysis">
                                 <i class="fas fa-sync-alt"></i>
-                                <span>Rerun</span>
                             </button>
                             {% elif report.status == 'failed' %}
                             <button onclick="rerunAnalysis(this)" 
@@ -125,7 +122,6 @@
                                     data-report-id="{{ report.id }}"
                                     class="bg-error hover:bg-red-600 text-white px-3 py-2 rounded text-xs font-medium flex items-center space-x-2 transition-colors" title="Delete Report">
                                 <i class="fas fa-trash"></i>
-                                <span>Delete</span>
                             </button>
                         </div>
                     </td>
@@ -263,6 +259,18 @@ async function confirmDelete() {
     } finally {
         AppUtils.hideLoading();
         closeDeleteModal();
+    }
+}
+
+function handleRowClick(event, row) {
+    // Don't trigger row click if clicking on action buttons
+    if (event.target.closest('td:last-child')) {
+        return;
+    }
+    
+    const href = row.dataset.href;
+    if (href) {
+        window.location.href = href;
     }
 }
 </script>
@@ -491,6 +499,24 @@ async function confirmDelete() {
     white-space: nowrap;
     z-index: 10;
     margin-bottom: 0.5rem;
+}
+
+/* Add styles for clickable rows */
+.cursor-pointer {
+    cursor: pointer;
+}
+
+.table-row-hover {
+    transition: background-color 0.2s ease;
+}
+
+.table-row-hover:hover td:not(:last-child) {
+    background-color: rgba(55, 65, 81, 0.5);
+}
+
+/* Prevent text selection when clicking rows */
+.table-row-hover td {
+    user-select: none;
 }
 </style>
 {% endblock %}
