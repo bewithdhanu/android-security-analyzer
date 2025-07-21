@@ -167,8 +167,33 @@
     </div>
 </div>
 
+<!-- Retry/Rerun Confirmation Modal -->
+<div id="retry-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+    <div class="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4 border border-gray-700 shadow-2xl">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-medium text-white flex items-center space-x-2">
+                <i class="fas fa-sync-alt text-warning"></i>
+                <span id="retry-modal-title">Confirm Analysis</span>
+            </h3>
+            <button onclick="closeRetryModal()" class="text-gray-400 hover:text-white transition-colors">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <p class="text-gray-300 mb-4" id="retry-modal-message">Are you sure you want to rerun the security analysis? This will create a new report with updated results.</p>
+        <div id="retry-report-preview" class="bg-gray-700 rounded p-3 mb-4"></div>
+        <div class="flex justify-end space-x-2">
+            <button onclick="closeRetryModal()" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded text-sm font-medium transition-colors">Cancel</button>
+            <button onclick="confirmRetry()" id="retry-confirm-button" class="text-white px-4 py-2 rounded text-sm font-medium flex items-center space-x-2 transition-colors">
+                <i class="fas fa-sync-alt"></i>
+                <span>Confirm</span>
+            </button>
+        </div>
+    </div>
+</div>
+
 <script>
 let reportToDelete = null;
+let retryData = null;
 
 
 
@@ -191,29 +216,82 @@ function rerunAnalysis(button) {
     const row = document.querySelector(`tr[data-report-id="${reportId}"]`);
     const appName = row.querySelector('.app-name').textContent;
     const packageName = row.querySelector('.app-package').textContent;
+    const version = row.querySelector('.text-primary').textContent;
     
-    if (confirm(`Rerun security analysis for ${appName} (${packageName})?\n\nThis will create a new report with updated results.`)) {
-        AppUtils.showLoading();
-        
-        AppUtils.apiRequest('/api/analyze', {
+    // Store retry data
+    retryData = {
+        reportId: reportId,
+        projectPath: projectPath,
+        appName: appName
+    };
+    
+    // Update modal content
+    const isFailed = button.classList.contains('bg-warning');
+    document.getElementById('retry-modal-title').textContent = isFailed ? 'Retry Analysis' : 'Rerun Analysis';
+    document.getElementById('retry-modal-message').textContent = isFailed ? 
+        'Are you sure you want to retry the failed analysis?' : 
+        'Are you sure you want to rerun the security analysis? This will create a new report with updated results.';
+    
+    document.getElementById('retry-report-preview').innerHTML = `
+        <div class="text-sm">
+            <div class="font-medium text-white">${appName}</div>
+            <div class="text-gray-400">${packageName} ${version}</div>
+        </div>
+    `;
+    
+    // Update confirm button style based on action type
+    const confirmButton = document.getElementById('retry-confirm-button');
+    if (isFailed) {
+        confirmButton.className = 'bg-warning hover:bg-yellow-600 text-white px-4 py-2 rounded text-sm font-medium flex items-center space-x-2 transition-colors';
+        confirmButton.querySelector('span').textContent = 'Retry';
+    } else {
+        confirmButton.className = 'bg-success hover:bg-green-600 text-white px-4 py-2 rounded text-sm font-medium flex items-center space-x-2 transition-colors';
+        confirmButton.querySelector('span').textContent = 'Rerun';
+    }
+    
+    // Show modal
+    document.getElementById('retry-modal').classList.remove('hidden');
+}
+
+function closeRetryModal() {
+    document.getElementById('retry-modal').classList.add('hidden');
+    retryData = null;
+}
+
+async function confirmRetry() {
+    if (!retryData) return;
+    
+    AppUtils.showLoading();
+    
+    try {
+        const response = await fetch('/api/analyze', {
             method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
             body: JSON.stringify({
-                project_path: projectPath,
-                app_name: appName
+                project_path: retryData.projectPath,
+                app_name: retryData.appName
             })
-        })
-        .then(data => {
-            AppUtils.showFlash('success', `Analysis completed successfully! Found ${data.total_issues} issues.`);
-            setTimeout(() => {
-                window.location.href = `/reports/${data.report_id}`;
-            }, 1500);
-        })
-        .catch(error => {
-            AppUtils.showFlash('error', 'Analysis failed: ' + error.message);
-        })
-        .finally(() => {
-            AppUtils.hideLoading();
         });
+        
+        if (!response.ok) {
+            throw new Error('Analysis request failed');
+        }
+        
+        const data = await response.json();
+        AppUtils.showFlash('success', `Analysis started successfully! Found ${data.total_issues} issues.`);
+        
+        // Redirect to new report after a short delay
+        setTimeout(() => {
+            window.location.href = `/reports/${data.report_id}`;
+        }, 1500);
+        
+    } catch (error) {
+        AppUtils.showFlash('error', 'Analysis failed: ' + error.message);
+    } finally {
+        AppUtils.hideLoading();
+        closeRetryModal();
     }
 }
 
@@ -517,6 +595,17 @@ function handleRowClick(event, row) {
 /* Prevent text selection when clicking rows */
 .table-row-hover td {
     user-select: none;
+}
+
+/* Modal Animation */
+@keyframes modalFadeIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+#delete-modal > div,
+#retry-modal > div {
+    animation: modalFadeIn 0.2s ease-out;
 }
 </style>
 {% endblock %}
