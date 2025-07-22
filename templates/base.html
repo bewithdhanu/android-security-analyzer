@@ -61,10 +61,46 @@
                     <i class="fas fa-plus text-xs"></i>
                     <span>New Analysis</span>
                 </a>
-                <a href="{{ url_for('get_api_docs') }}" target="_blank" class="flex items-center space-x-1 px-3 py-1 rounded text-sm hover:bg-gray-700 transition-colors text-gray-300">
-                    <i class="fas fa-code text-xs"></i>
-                    <span>API</span>
+                {% if current_user and current_user.is_admin %}
+                <a href="{{ url_for('list_users') }}" class="flex items-center space-x-1 px-3 py-1 rounded text-sm hover:bg-gray-700 transition-colors {% if active_page == 'users' %}bg-gray-700 text-primary{% else %}text-gray-300{% endif %}">
+                    <i class="fas fa-users text-xs"></i>
+                    <span>Users</span>
                 </a>
+                {% endif %}
+                
+                <!-- User Menu -->
+                {% if current_user %}
+                <div class="relative ml-4">
+                    <button 
+                        onclick="toggleUserMenu()" 
+                        class="flex items-center space-x-2 px-3 py-1 rounded hover:bg-gray-700 transition-colors"
+                    >
+                        <div class="w-8 h-8 bg-primary/20 rounded-full flex items-center justify-center text-primary">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        <span class="text-sm text-gray-300">{{ current_user.name }}</span>
+                        <i class="fas fa-chevron-down text-xs text-gray-500"></i>
+                    </button>
+                    
+                    <!-- Dropdown Menu -->
+                    <div id="userMenu" class="absolute right-0 mt-2 w-48 bg-gray-800 rounded-lg border border-gray-700 shadow-lg hidden">
+                        <div class="p-2 border-b border-gray-700">
+                            <div class="text-sm font-medium text-white">{{ current_user.name }}</div>
+                            <div class="text-xs text-gray-400">{{ current_user.email }}</div>
+                        </div>
+                        <div class="p-1">
+                            <a href="{{ url_for('change_password_page') }}" class="flex items-center space-x-2 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 rounded transition-colors">
+                                <i class="fas fa-key"></i>
+                                <span>Change Password</span>
+                            </a>
+                            <a href="{{ url_for('logout') }}" class="flex items-center space-x-2 px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 rounded transition-colors">
+                                <i class="fas fa-sign-out-alt"></i>
+                                <span>Sign Out</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
             </div>
         </div>
     </nav>
@@ -84,6 +120,28 @@
             <p class="mt-2 text-white">Processing...</p>
         </div>
     </div>
+
+    <script>
+    function toggleUserMenu() {
+        const menu = document.getElementById('userMenu');
+        menu.classList.toggle('hidden');
+        
+        // Close menu when clicking outside
+        const closeMenu = (e) => {
+            if (!menu.contains(e.target) && !e.target.closest('button')) {
+                menu.classList.add('hidden');
+                document.removeEventListener('click', closeMenu);
+            }
+        };
+        
+        if (!menu.classList.contains('hidden')) {
+            // Small delay to prevent immediate closing
+            setTimeout(() => {
+                document.addEventListener('click', closeMenu);
+            }, 100);
+        }
+    }
+    </script>
 
     {% block extra_scripts %}{% endblock %}
 </body>

@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}User Management - Android Security Analyzer{% endblock %}
+
+{% block content %}
+<div class="space-y-4">
+    <!-- Header -->
+    <div class="bg-gray-800 rounded-lg border border-gray-700 p-6">
+        <div class="flex items-center justify-between">
+            <div>
+                <h1 class="text-2xl font-bold text-white mb-2">User Management</h1>
+                <p class="text-gray-400">Manage user accounts and permissions</p>
+            </div>
+            <a href="{{ url_for('new_user_page') }}" class="bg-primary hover:bg-blue-600 text-white px-4 py-2 rounded font-medium transition-colors flex items-center space-x-2">
+                <i class="fas fa-plus"></i>
+                <span>Add User</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Users List -->
+    <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-700">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-300">Name</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-300">Email</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-300">Role</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-300">Created</th>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-300">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-700">
+                    {% for user in users %}
+                    <tr class="hover:bg-gray-700/50 transition-colors">
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="flex items-center">
+                                <div class="w-8 h-8 bg-primary/20 rounded-full flex items-center justify-center text-primary">
+                                    <i class="fas fa-user"></i>
+                                </div>
+                                <span class="ml-3 font-medium text-white">{{ user.name }}</span>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-gray-300">
+                            {{ user.email }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            {% if user.is_admin %}
+                            <span class="bg-primary/20 text-primary px-2 py-1 rounded text-xs font-medium">
+                                Admin
+                            </span>
+                            {% else %}
+                            <span class="bg-gray-600/20 text-gray-400 px-2 py-1 rounded text-xs font-medium">
+                                User
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-gray-300 text-sm">
+                            {{ user.created_at.strftime('%Y-%m-%d %H:%M') }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm">
+                            <div class="flex justify-end space-x-4">
+                                {% if user.id != current_user.id %}
+                                <a href="{{ url_for('reset_user_password_page', user_id=user.id) }}" 
+                                   class="text-primary hover:text-blue-400 transition-colors"
+                                   title="Reset Password">
+                                    <i class="fas fa-key"></i>
+                                </a>
+                                <a href="{{ url_for('delete_user_page', user_id=user.id) }}" 
+                                   class="text-error hover:text-red-400 transition-colors"
+                                   title="Delete User">
+                                    <i class="fas fa-trash"></i>
+                                </a>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %} 

@@ -1,14 +1,18 @@
-from fastapi import FastAPI, HTTPException, Request, Form, Depends, UploadFile, File
+from fastapi import FastAPI, HTTPException, Request, Form, Depends, File, UploadFile, Cookie, Response
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from passlib.context import CryptContext
 import weasyprint
 import io
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, JSON, inspect
-from sqlalchemy.orm import declarative_base
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, JSON, Boolean, ForeignKey
+from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.orm import sessionmaker, Session
-from pydantic import BaseModel
-from datetime import datetime
+from pydantic import BaseModel, EmailStr
+from datetime import datetime, timedelta, timezone
 import json
 import os
 from typing import List, Optional
@@ -16,16 +20,34 @@ import shutil
 import tempfile
 import zipfile
 from pathlib import Path
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import Response
-from fastapi.middleware.cors import CORSMiddleware
+import secrets
+from jose import JWTError, jwt
+
+# Security settings
+SECRET_KEY = "your-secret-key-here"  # In production, use a secure secret key
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
+
+# Password hashing
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Database setup
 SQLITE_DATABASE_URL = "sqlite:///./security_reports.db"
 engine = create_engine(SQLITE_DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
+# User Models
+class User(Base):
+    __tablename__ = "users"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    email = Column(String, unique=True, index=True)
+    password_hash = Column(String)
+    is_admin = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 # Database Models
 class SecurityReport(Base):
@@ -35,70 +57,52 @@ class SecurityReport(Base):
     app_name = Column(String, index=True)
     package_name = Column(String, index=True)
     version = Column(String)
+    project_path = Column(String)
     scan_time = Column(DateTime, default=datetime.utcnow)
-    total_issues = Column(Integer)
+    total_issues = Column(Integer, default=0)
     critical_issues = Column(Integer, default=0)
     high_issues = Column(Integer, default=0)
     medium_issues = Column(Integer, default=0)
     low_issues = Column(Integer, default=0)
-    project_path = Column(String)
-    status = Column(String, default="completed")  # pending, in_progress, completed, failed
-    app_logo = Column(Text)  # Base64 encoded logo image
-    report_data = Column(Text)  # JSON string of full report
+    status = Column(String, default="pending")  # pending, in_progress, completed, failed
+    report_data = Column(JSON)
+    app_logo = Column(Text, nullable=True)
 
 class IgnoredIssue(Base):
     __tablename__ = "ignored_issues"
     
     id = Column(Integer, primary_key=True, index=True)
-    report_id = Column(Integer, index=True)  # Foreign key to SecurityReport
-    issue_title = Column(String, index=True)
-    issue_category = Column(String, index=True)
+    report_id = Column(Integer, ForeignKey("security_reports.id"))
+    issue_title = Column(String)
+    issue_category = Column(String)
     issue_file_path = Column(String)
     issue_line_number = Column(Integer)
     issue_description = Column(Text)
-    keyword_pattern = Column(String)  # For keyword/domain-wide ignoring
-    is_global_ignore = Column(Integer, default=0)  # 1 if ignoring all instances of keyword/domain
+    keyword_pattern = Column(String, nullable=True)
+    is_global_ignore = Column(Integer, default=0)
     ignored_at = Column(DateTime, default=datetime.utcnow)
 
-# Create tables (only if they don't exist)
-Base.metadata.create_all(bind=engine)
-
-# Database migration for new columns
-def migrate_database():
-    """Add new columns to existing tables if they don't exist"""
-    db = SessionLocal()
-    try:
-        # Check if the ignored_issues table exists first
-        inspector = inspect(engine)
-        if 'ignored_issues' not in inspector.get_table_names():
-            print("ignored_issues table doesn't exist yet, will be created by create_all()")
-            return
-            
-        # Check if the new columns exist in ignored_issues table
-        existing_columns = [col['name'] for col in inspector.get_columns('ignored_issues')]
-        
-        # Add keyword_pattern column if it doesn't exist
-        if 'keyword_pattern' not in existing_columns:
-            db.execute('ALTER TABLE ignored_issues ADD COLUMN keyword_pattern VARCHAR')
-            print("✅ Added keyword_pattern column to ignored_issues table")
-        
-        # Add is_global_ignore column if it doesn't exist
-        if 'is_global_ignore' not in existing_columns:
-            db.execute('ALTER TABLE ignored_issues ADD COLUMN is_global_ignore INTEGER DEFAULT 0')
-            print("✅ Added is_global_ignore column to ignored_issues table")
-        
-        db.commit()
-        print("🎉 Database migration completed successfully")
-    except Exception as e:
-        print(f"Database migration completed or not needed: {e}")
-        db.rollback()
-    finally:
-        db.close()
-
-# Run migration
-migrate_database()
-
 # Pydantic Models
+class UserCreate(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+    is_admin: bool = False
+
+class UserResponse(BaseModel):
+    id: int
+    name: str
+    email: str
+    is_admin: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True  # New way to enable ORM mode in Pydantic v2
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
 class SecurityReportCreate(BaseModel):
     app_name: str
     package_name: str
@@ -119,6 +123,9 @@ class SecurityReportResponse(BaseModel):
     low_issues: int
     status: str
     app_logo: Optional[str] = None
+
+    class Config:
+        from_attributes = True
 
 class IgnoreIssueRequest(BaseModel):
     issue_title: str
@@ -141,17 +148,87 @@ class IgnoredIssueResponse(BaseModel):
     is_global_ignore: int
     ignored_at: datetime
 
+    class Config:
+        from_attributes = True
+
 class AnalysisRequest(BaseModel):
     project_path: str
     app_name: Optional[str] = None
 
-# FastAPI app
-app = FastAPI(
-    title="Android Security Analyzer API",
-    version="1.0.0"
-)
+# Authentication functions
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
 
-# Configure maximum upload size to 1GB
+def verify_password(plain_password: str, hashed_password: str):
+    return pwd_context.verify(plain_password, hashed_password)
+
+def get_password_hash(password: str):
+    return pwd_context.hash(password)
+
+def authenticate_user(db: Session, email: str, password: str):
+    user = db.query(User).filter(User.email == email).first()
+    if not user or not verify_password(password, user.password_hash):
+        return None
+    return user
+
+def get_current_user(db: Session, token: str = Cookie(None)):
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("sub")
+        if user_id is None:
+            return None
+        return db.query(User).filter(User.id == user_id).first()
+    except JWTError:
+        return None
+
+def validate_password(password: str) -> tuple[bool, str]:
+    """
+    Validate password strength
+    Returns (is_valid, error_message)
+    """
+    if len(password) < 8:
+        return False, "Password must be at least 8 characters long"
+    
+    if not any(c.isupper() for c in password):
+        return False, "Password must contain at least one uppercase letter"
+    
+    if not any(c.islower() for c in password):
+        return False, "Password must contain at least one lowercase letter"
+    
+    if not any(c.isdigit() for c in password):
+        return False, "Password must contain at least one number"
+    
+    if not any(c in "!@#$%^&*()_+-=[]{}|;:,.<>?" for c in password):
+        return False, "Password must contain at least one special character"
+    
+    return True, ""
+
+# Initialize admin user
+def init_admin():
+    db = SessionLocal()
+    try:
+        # Check if any users exist
+        user_count = db.query(User).count()
+        return user_count == 0
+    finally:
+        db.close()
+
+# Create all tables
+Base.metadata.create_all(bind=engine)
+# Check if first-time setup is needed
+needs_setup = init_admin()
+
+# FastAPI app
+app = FastAPI(title="Android Security Analyzer API", version="1.0.0")
+templates = Jinja2Templates(directory="templates")
+
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -161,13 +238,6 @@ app.add_middleware(
 )
 
 # Configure maximum request size to 1GB
-app = FastAPI(
-    title="Android Security Analyzer API",
-    version="1.0.0"
-)
-templates = Jinja2Templates(directory="templates")
-
-# Increase maximum upload size to 1GB
 class LargeUploadMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         if request.method == "POST" and "multipart/form-data" in request.headers.get("content-type", ""):
@@ -180,7 +250,6 @@ app.add_middleware(LargeUploadMiddleware)
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-
 # Dependency to get DB session
 def get_db():
     db = SessionLocal()
@@ -189,14 +258,415 @@ def get_db():
     finally:
         db.close()
 
-@app.get("/")
-async def root():
-    return RedirectResponse(url="/reports")
-
-@app.get("/reports", response_class=HTMLResponse)
-async def list_reports(request: Request):
-    """List all security reports"""
+@app.get("/setup", response_class=HTMLResponse)
+async def setup_page(request: Request, error: str = None):
+    """First-time setup page for creating admin account"""
     db = SessionLocal()
+    try:
+        # If users already exist, redirect to login
+        if db.query(User).count() > 0:
+            return RedirectResponse(url="/login", status_code=303)
+        
+        return templates.TemplateResponse("setup.html", {
+            "request": request,
+            "error": error
+        })
+    finally:
+        db.close()
+
+@app.post("/setup")
+async def create_first_admin(
+    request: Request,
+    name: str = Form(...),
+    email: str = Form(...),
+    password: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    """Create the first admin user"""
+    # If users already exist, redirect to login
+    if db.query(User).count() > 0:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    # Validate email format
+    try:
+        from email_validator import validate_email, EmailNotValidError
+        validate_email(email)
+    except EmailNotValidError:
+        return templates.TemplateResponse("setup.html", {
+            "request": request,
+            "error": "Invalid email format"
+        })
+    
+    # Validate password strength
+    is_valid, error_message = validate_password(password)
+    if not is_valid:
+        return templates.TemplateResponse("setup.html", {
+            "request": request,
+            "error": error_message
+        })
+    
+    # Create admin user
+    admin_user = User(
+        name=name,
+        email=email,
+        password_hash=get_password_hash(password),
+        is_admin=True
+    )
+    db.add(admin_user)
+    db.commit()
+    
+    # Create access token and redirect to home
+    access_token = create_access_token({"sub": str(admin_user.id)})
+    response = RedirectResponse(url="/", status_code=303)
+    response.set_cookie(key="token", value=access_token, httponly=True)
+    return response
+
+# Authentication routes
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request, error: str = None):
+    """Login page that redirects to setup if no users exist"""
+    db = SessionLocal()
+    try:
+        # If no users exist, redirect to setup
+        if db.query(User).count() == 0:
+            return RedirectResponse(url="/setup", status_code=303)
+        
+        return templates.TemplateResponse("login.html", {
+            "request": request,
+            "error": error
+        })
+    finally:
+        db.close()
+
+@app.post("/login")
+async def login(
+    request: Request,
+    response: Response,
+    email: str = Form(...),
+    password: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    user = authenticate_user(db, email, password)
+    if not user:
+        return templates.TemplateResponse("login.html", {
+            "request": request,
+            "error": "Invalid email or password"
+        })
+    
+    access_token = create_access_token({"sub": str(user.id)})
+    response = RedirectResponse(url="/", status_code=303)
+    response.set_cookie(key="token", value=access_token, httponly=True)
+    return response
+
+@app.get("/logout")
+async def logout(response: Response):
+    response = RedirectResponse(url="/login", status_code=303)
+    response.delete_cookie(key="token")
+    return response
+
+# User management routes
+@app.get("/users", response_class=HTMLResponse)
+async def list_users(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    current_user = get_current_user(db, request.cookies.get("token"))
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    if not current_user.is_admin:
+        return RedirectResponse(url="/", status_code=303)
+    
+    users = db.query(User).all()
+    return templates.TemplateResponse("users.html", {
+        "request": request,
+        "users": users,
+        "current_user": current_user,
+        "active_page": "users"
+    })
+
+@app.get("/users/new", response_class=HTMLResponse)
+async def new_user_page(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    current_user = get_current_user(db, request.cookies.get("token"))
+    if not current_user or not current_user.is_admin:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    return templates.TemplateResponse("user_form.html", {
+        "request": request,
+        "current_user": current_user,
+        "active_page": "users"
+    })
+
+@app.post("/users/new")
+async def create_user(
+    request: Request,
+    name: str = Form(...),
+    email: str = Form(...),
+    password: str = Form(...),
+    is_admin: bool = Form(False),
+    db: Session = Depends(get_db)
+):
+    """Create a new user"""
+    current_user = get_current_user(db, request.cookies.get("token"))
+    if not current_user or not current_user.is_admin:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    # Check if user exists
+    if db.query(User).filter(User.email == email).first():
+        return templates.TemplateResponse("user_form.html", {
+            "request": request,
+            "error": "Email already registered",
+            "current_user": current_user,
+            "active_page": "users"
+        })
+    
+    # Validate email format
+    try:
+        from email_validator import validate_email, EmailNotValidError
+        validate_email(email)
+    except EmailNotValidError:
+        return templates.TemplateResponse("user_form.html", {
+            "request": request,
+            "error": "Invalid email format",
+            "current_user": current_user,
+            "active_page": "users"
+        })
+    
+    # Validate password strength
+    is_valid, error_message = validate_password(password)
+    if not is_valid:
+        return templates.TemplateResponse("user_form.html", {
+            "request": request,
+            "error": error_message,
+            "current_user": current_user,
+            "active_page": "users"
+        })
+    
+    # Create new user
+    new_user = User(
+        name=name,
+        email=email,
+        password_hash=get_password_hash(password),
+        is_admin=is_admin
+    )
+    db.add(new_user)
+    db.commit()
+    
+    return RedirectResponse(url="/users", status_code=303)
+
+@app.get("/change-password", response_class=HTMLResponse)
+async def change_password_page(
+    request: Request,
+    error: str = None,
+    db: Session = Depends(get_db)
+):
+    """Page for changing own password"""
+    current_user = get_current_user(db, request.cookies.get("token"))
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    return templates.TemplateResponse("change_password.html", {
+        "request": request,
+        "error": error,
+        "current_user": current_user
+    })
+
+@app.post("/change-password")
+async def change_password(
+    request: Request,
+    current_password: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    """Change user's own password"""
+    current_user = get_current_user(db, request.cookies.get("token"))
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    # Verify current password
+    if not verify_password(current_password, current_user.password_hash):
+        return templates.TemplateResponse("change_password.html", {
+            "request": request,
+            "error": "Current password is incorrect",
+            "current_user": current_user
+        })
+    
+    # Verify new passwords match
+    if new_password != confirm_password:
+        return templates.TemplateResponse("change_password.html", {
+            "request": request,
+            "error": "New passwords do not match",
+            "current_user": current_user
+        })
+    
+    # Validate new password strength
+    is_valid, error_message = validate_password(new_password)
+    if not is_valid:
+        return templates.TemplateResponse("change_password.html", {
+            "request": request,
+            "error": error_message,
+            "current_user": current_user
+        })
+    
+    # Update password
+    current_user.password_hash = get_password_hash(new_password)
+    db.commit()
+    
+    return RedirectResponse(url="/", status_code=303)
+
+@app.get("/users/{user_id}/reset-password", response_class=HTMLResponse)
+async def reset_user_password_page(
+    request: Request,
+    user_id: int,
+    error: str = None,
+    db: Session = Depends(get_db)
+):
+    """Page for admin to reset a user's password"""
+    current_user = get_current_user(db, request.cookies.get("token"))
+    if not current_user or not current_user.is_admin:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        return RedirectResponse(url="/users", status_code=303)
+    
+    return templates.TemplateResponse("reset_password.html", {
+        "request": request,
+        "user": user,
+        "error": error,
+        "current_user": current_user,
+        "active_page": "users"
+    })
+
+@app.post("/users/{user_id}/reset-password")
+async def reset_user_password(
+    request: Request,
+    user_id: int,
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    """Admin resets a user's password"""
+    current_user = get_current_user(db, request.cookies.get("token"))
+    if not current_user or not current_user.is_admin:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        return RedirectResponse(url="/users", status_code=303)
+    
+    # Verify passwords match
+    if new_password != confirm_password:
+        return templates.TemplateResponse("reset_password.html", {
+            "request": request,
+            "user": user,
+            "error": "Passwords do not match",
+            "current_user": current_user,
+            "active_page": "users"
+        })
+    
+    # Validate password strength
+    is_valid, error_message = validate_password(new_password)
+    if not is_valid:
+        return templates.TemplateResponse("reset_password.html", {
+            "request": request,
+            "user": user,
+            "error": error_message,
+            "current_user": current_user,
+            "active_page": "users"
+        })
+    
+    # Update password
+    user.password_hash = get_password_hash(new_password)
+    db.commit()
+    
+    return RedirectResponse(url="/users", status_code=303)
+
+@app.get("/users/{user_id}/delete", response_class=HTMLResponse)
+async def delete_user_page(
+    request: Request,
+    user_id: int,
+    db: Session = Depends(get_db)
+):
+    """Confirmation page for deleting a user"""
+    current_user = get_current_user(db, request.cookies.get("token"))
+    if not current_user or not current_user.is_admin:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    user_to_delete = db.query(User).filter(User.id == user_id).first()
+    if not user_to_delete:
+        return RedirectResponse(url="/users", status_code=303)
+    
+    # Don't allow deleting yourself
+    if user_to_delete.id == current_user.id:
+        return templates.TemplateResponse("error.html", {
+            "request": request,
+            "error": "You cannot delete your own account",
+            "current_user": current_user,
+            "active_page": "users"
+        })
+    
+    return templates.TemplateResponse("delete_user.html", {
+        "request": request,
+        "user": user_to_delete,
+        "current_user": current_user,
+        "active_page": "users"
+    })
+
+@app.post("/users/{user_id}/delete")
+async def delete_user(
+    request: Request,
+    user_id: int,
+    db: Session = Depends(get_db)
+):
+    """Delete a user"""
+    current_user = get_current_user(db, request.cookies.get("token"))
+    if not current_user or not current_user.is_admin:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    user_to_delete = db.query(User).filter(User.id == user_id).first()
+    if not user_to_delete:
+        return RedirectResponse(url="/users", status_code=303)
+    
+    # Don't allow deleting yourself
+    if user_to_delete.id == current_user.id:
+        return templates.TemplateResponse("error.html", {
+            "request": request,
+            "error": "You cannot delete your own account",
+            "current_user": current_user,
+            "active_page": "users"
+        })
+    
+    db.delete(user_to_delete)
+    db.commit()
+    
+    return RedirectResponse(url="/users", status_code=303)
+
+# Update root route to handle first-time setup
+@app.get("/")
+async def root(request: Request, db: Session = Depends(get_db)):
+    # If no users exist, redirect to setup
+    if db.query(User).count() == 0:
+        return RedirectResponse(url="/setup", status_code=303)
+    
+    # Check authentication for normal flow
+    current_user = get_current_user(db, request.cookies.get("token"))
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=303)
+    return RedirectResponse(url="/reports", status_code=303)
+
+# Reports routes
+@app.get("/reports", response_class=HTMLResponse)
+async def list_reports(request: Request, db: Session = Depends(get_db)):
+    """List all security reports"""
+    current_user = get_current_user(db, request.cookies.get("token"))
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=303)
+    
     try:
         reports = db.query(SecurityReport).order_by(SecurityReport.scan_time.desc()).all()
         
@@ -210,8 +680,8 @@ async def list_reports(request: Request):
                     ).all()
                     
                     if ignored_issues:
-                        # Parse report data and filter ignored issues
-                        report_data = json.loads(report.report_data)
+                        # Parse report data if it's a string
+                        report_data = report.report_data if isinstance(report.report_data, dict) else json.loads(report.report_data)
                         filtered_report_data = filter_ignored_issues(report_data, ignored_issues)
                         
                         # Update the report object with filtered counts
@@ -221,7 +691,7 @@ async def list_reports(request: Request):
                         report.medium_issues = filtered_summary.get("medium", 0)
                         report.low_issues = filtered_summary.get("low", 0)
                         report.total_issues = filtered_report_data["metadata"]["total_issues"]
-                except (json.JSONDecodeError, KeyError):
+                except (json.JSONDecodeError, KeyError, AttributeError):
                     # If there's an error parsing, keep original counts
                     pass
         
@@ -237,403 +707,112 @@ async def list_reports(request: Request):
             "request": request,
             "reports": reports,
             "stats": stats,
-            "active_page": "reports"
+            "active_page": "reports",
+            "current_user": current_user
         })
     finally:
         db.close()
 
-@app.get("/reports/compare", response_class=HTMLResponse)
-async def compare_reports_page(request: Request):
-    """Show report comparison page"""
-    db = SessionLocal()
+@app.get("/reports/compare", response_class=HTMLResponse)  # This route must come before /reports/{report_id}
+async def compare_reports_page(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """Compare multiple security reports"""
+    current_user = get_current_user(db, request.cookies.get("token"))
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=303)
+    
     try:
-        reports = db.query(SecurityReport)\
-            .filter(SecurityReport.status == "completed")\
-            .order_by(SecurityReport.scan_time.desc())\
-            .all()
+        # Get all completed reports
+        reports = db.query(SecurityReport).filter(
+            SecurityReport.status == "completed"
+        ).order_by(SecurityReport.scan_time.desc()).all()
+        
+        # Get report IDs from query params
+        selected_ids = request.query_params.getlist("report")
+        selected_ids = [int(id) for id in selected_ids if id.isdigit()]
+        
+        # If reports are selected, prepare comparison data
+        comparison_data = None
+        if selected_ids:
+            selected_reports = []
+            for report in reports:
+                if report.id in selected_ids:
+                    # Parse report data if it's a string
+                    report_data = report.report_data if isinstance(report.report_data, dict) else json.loads(report.report_data)
+                    
+                    # Get ignored issues
+                    ignored_issues = db.query(IgnoredIssue).filter(
+                        IgnoredIssue.report_id == report.id
+                    ).all()
+                    
+                    # Filter ignored issues if any exist
+                    if ignored_issues:
+                        report_data = filter_ignored_issues(report_data, ignored_issues)
+                    
+                    selected_reports.append({
+                        "id": report.id,
+                        "app_name": report.app_name,
+                        "package_name": report.package_name,
+                        "version": report.version,
+                        "scan_time": report.scan_time,
+                        "data": report_data
+                    })
+            
+            comparison_data = prepare_comparison_data(selected_reports)
         
         return templates.TemplateResponse("compare_reports.html", {
             "request": request,
             "reports": reports,
-            "active_page": "compare"
+            "selected_ids": selected_ids,
+            "comparison_data": comparison_data,
+            "active_page": "compare",
+            "current_user": current_user
         })
     finally:
         db.close()
 
-@app.get("/submit", response_class=HTMLResponse)
-async def submit_request_page(request: Request):
-    """Show submit analysis request form"""
-    db = SessionLocal()
-    try:
-        # Get recent projects for quick access
-        recent_projects = db.query(SecurityReport)\
-            .filter(SecurityReport.status == "completed")\
-            .order_by(SecurityReport.scan_time.desc())\
-            .limit(5).all()
-        
-        return templates.TemplateResponse("submit_request.html", {
-            "request": request,
-            "recent_projects": recent_projects,
-            "active_page": "submit"
-        })
-    finally:
-        db.close()
-
-def _find_project_root(temp_dir: str) -> str:
-    """Find the actual project root directory in the extracted contents"""
-    # Look for key Android project files/directories
-    android_indicators = [
-        'app/build.gradle',
-        'app/build.gradle.kts',
-        'build.gradle',
-        'build.gradle.kts',
-        'gradlew',
-        'settings.gradle',
-        'settings.gradle.kts',
-        'app/src/main/AndroidManifest.xml'
-    ]
-    
-    # First check if any indicators exist in the temp directory itself
-    if any(os.path.exists(os.path.join(temp_dir, indicator)) for indicator in android_indicators):
-        return temp_dir
-    
-    # Check immediate subdirectories
-    for item in os.listdir(temp_dir):
-        item_path = os.path.join(temp_dir, item)
-        if os.path.isdir(item_path):
-            # Check if this directory has any of the Android project indicators
-            if any(os.path.exists(os.path.join(item_path, indicator)) for indicator in android_indicators):
-                return item_path
-            
-            # Check one level deeper (for cases where the project is in a subdirectory)
-            for subitem in os.listdir(item_path):
-                subitem_path = os.path.join(item_path, subitem)
-                if os.path.isdir(subitem_path):
-                    if any(os.path.exists(os.path.join(subitem_path, indicator)) for indicator in android_indicators):
-                        return subitem_path
-    
-    # If no clear Android project structure is found, return the temp directory
-    return temp_dir
-
-@app.post("/submit")
-async def submit_analysis(
+@app.get("/reports/{report_id}", response_class=HTMLResponse)  # This route must come after /reports/compare
+async def view_report_page(
     request: Request,
-    source_type: str = Form(...),
-    project_path: str = Form(None),
-    project_zip: UploadFile = File(None),
-    app_name: str = Form(None)
+    report_id: int,
+    db: Session = Depends(get_db)
 ):
-    """Handle form submission for analysis"""
-    db = None
-    pending_report = None
-    temp_dir = None
+    """View a single security report"""
+    current_user = get_current_user(db, request.cookies.get("token"))
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=303)
     
-    try:
-        if source_type == "path":
-            if not project_path:
-                return templates.TemplateResponse("submit_request.html", {
-                    "request": request,
-                    "active_page": "submit",
-                    "errors": {"project_path": "Project path is required"},
-                    "form_data": {"project_path": project_path, "app_name": app_name}
-                })
-            
-            # Validate project path exists
-            if not os.path.exists(project_path):
-                return templates.TemplateResponse("submit_request.html", {
-                    "request": request,
-                    "active_page": "submit",
-                    "errors": {"project_path": "Project path does not exist"},
-                    "form_data": {"project_path": project_path, "app_name": app_name}
-                })
-            
-            analysis_path = project_path
-            
-        else:  # source_type == "zip"
-            if not project_zip:
-                return templates.TemplateResponse("submit_request.html", {
-                    "request": request,
-                    "active_page": "submit",
-                    "errors": {"project_zip": "ZIP file is required"},
-                    "form_data": {"app_name": app_name}
-                })
-            
-            # Create temporary directory with unique name
-            temp_dir = tempfile.mkdtemp(prefix="android_security_analysis_")
-            
-            try:
-                # Save and extract ZIP file
-                zip_path = os.path.join(temp_dir, "project.zip")
-                with open(zip_path, "wb") as buffer:
-                    shutil.copyfileobj(project_zip.file, buffer)
-                
-                # Extract ZIP
-                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                    zip_ref.extractall(temp_dir)
-                os.remove(zip_path)  # Remove the ZIP file after extraction
-                
-                # Find the actual project root
-                analysis_path = _find_project_root(temp_dir)
-                
-                if analysis_path == temp_dir:
-                    # No clear Android project structure found
-                    shutil.rmtree(temp_dir)
-                    return templates.TemplateResponse("submit_request.html", {
-                        "request": request,
-                        "active_page": "submit",
-                        "errors": {"project_zip": "Could not find Android project structure in ZIP file"},
-                        "form_data": {"app_name": app_name}
-                    })
-                
-            except zipfile.BadZipFile:
-                if temp_dir and os.path.exists(temp_dir):
-                    shutil.rmtree(temp_dir)
-                return templates.TemplateResponse("submit_request.html", {
-                    "request": request,
-                    "active_page": "submit",
-                    "errors": {"project_zip": "Invalid ZIP file"},
-                    "form_data": {"app_name": app_name}
-                })
-            except Exception as e:
-                if temp_dir and os.path.exists(temp_dir):
-                    shutil.rmtree(temp_dir)
-                return templates.TemplateResponse("submit_request.html", {
-                    "request": request,
-                    "active_page": "submit",
-                    "errors": {"project_zip": f"Error extracting ZIP file: {str(e)}"},
-                    "form_data": {"app_name": app_name}
-                })
-        
-        # Run analysis
-        from android_security_analyzer import AndroidSecurityAnalyzer
-        
-        # Create pending record
-        db = SessionLocal()
-        pending_report = SecurityReport(
-            app_name=app_name or "Unknown",
-            package_name="Unknown",
-            version="Unknown",
-            project_path=analysis_path,
-            status="in_progress",
-            total_issues=0
-        )
-        db.add(pending_report)
-        db.commit()
-        db.refresh(pending_report)
-        
-        # Get the ID after commit and refresh
-        report_id = pending_report.id
-        
-        try:
-            # Run analysis
-            analyzer = AndroidSecurityAnalyzer(analysis_path)
-            analysis_result = await analyzer.analyze_async(analysis_path)
-            report_data = analyzer.report_generator.prepare_json_data(analysis_result)
-            
-            # Update database record with results
-            pending_report = db.query(SecurityReport).filter(SecurityReport.id == report_id).first()
-            if pending_report:
-                pending_report.app_name = report_data["app_metadata"]["app_name"]
-                pending_report.package_name = report_data["app_metadata"]["package_name"]
-                pending_report.version = report_data["app_metadata"]["version_name"]
-                pending_report.total_issues = report_data["metadata"]["total_issues"]
-                pending_report.critical_issues = report_data["summary"]["by_severity"]["critical"]
-                pending_report.high_issues = report_data["summary"]["by_severity"]["high"]
-                pending_report.medium_issues = report_data["summary"]["by_severity"]["medium"]
-                pending_report.low_issues = report_data["summary"]["by_severity"]["low"]
-                pending_report.app_logo = report_data["app_metadata"].get("app_logo_base64", "")
-                pending_report.status = "completed"
-                pending_report.report_data = json.dumps(report_data)
-                
-                db.commit()
-                
-                # Clean up temp directory if used
-                if temp_dir and os.path.exists(temp_dir):
-                    shutil.rmtree(temp_dir)
-                
-                # Redirect to report view
-                return RedirectResponse(url=f"/reports/{report_id}", status_code=303)
-            else:
-                raise Exception("Could not find pending report after creation")
-                
-        except Exception as e:
-            # Clean up temp directory if used
-            if temp_dir and os.path.exists(temp_dir):
-                shutil.rmtree(temp_dir)
-            
-            # Mark report as failed
-            if pending_report and hasattr(pending_report, 'id'):
-                try:
-                    if db:
-                        failed_report = db.query(SecurityReport).filter(SecurityReport.id == pending_report.id).first()
-                        if failed_report:
-                            failed_report.status = "failed"
-                            db.commit()
-                except Exception:
-                    pass  # Don't let cleanup errors override the main error
-            
-            return templates.TemplateResponse("submit_request.html", {
-                "request": request,
-                "active_page": "submit",
-                "form_data": {"project_path": project_path, "app_name": app_name},
-                "messages": [("error", f"Analysis failed: {str(e)}")],
-            })
-            
-    except Exception as e:
-        # Clean up temp directory if used
-        if temp_dir and os.path.exists(temp_dir):
-            shutil.rmtree(temp_dir)
-        
-        # Mark report as failed if it exists
-        if pending_report and hasattr(pending_report, 'id'):
-            try:
-                if db:
-                    failed_report = db.query(SecurityReport).filter(SecurityReport.id == pending_report.id).first()
-                    if failed_report:
-                        failed_report.status = "failed"
-                        db.commit()
-            except Exception:
-                pass  # Don't let cleanup errors override the main error
-        
-        return templates.TemplateResponse("submit_request.html", {
-            "request": request,
-            "active_page": "submit",
-            "form_data": {"project_path": project_path, "app_name": app_name},
-            "messages": [("error", f"Analysis failed: {str(e)}")],
-        })
-    finally:
-        if db:
-            db.close()
-
-def extract_keyword_from_title(title: str, category: str) -> str:
-    """Extract keyword/domain from issue title for pattern matching"""
-    if category == "Security Keywords" and "Security-Related Keyword: " in title:
-        return title.replace("Security-Related Keyword: ", "").strip()
-    elif category == "Suspicious Domains" and "Suspicious Domain Reference: " in title:
-        return title.replace("Suspicious Domain Reference: ", "").strip()
-    return ""
-
-def filter_ignored_issues(report_data: dict, ignored_issues: List[IgnoredIssue]) -> dict:
-    """Filter out ignored issues from report data and recalculate statistics"""
-    if not ignored_issues:
-        return report_data
-    
-    # Create sets for different types of ignoring
-    ignored_exact_set = set()
-    ignored_keywords = set()
-    ignored_domains = set()
-    
-    for ignored in ignored_issues:
-        if ignored.is_global_ignore and ignored.keyword_pattern:
-            # Global pattern-based ignore
-            if ignored.issue_category == "Security Keywords":
-                ignored_keywords.add(ignored.keyword_pattern.lower())
-            elif ignored.issue_category == "Suspicious Domains":
-                ignored_domains.add(ignored.keyword_pattern.lower())
-        else:
-            # Exact issue ignore
-            ignored_exact_set.add((
-                ignored.issue_title,
-                ignored.issue_category,
-                ignored.issue_file_path,
-                ignored.issue_line_number
-            ))
-    
-    # Filter issues from categorized data
-    filtered_categories = []
-    new_total_issues = 0
-    new_severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
-    
-    for category in report_data["issues"]["categorized"]:
-        filtered_issues = []
-        
-        for issue in category["issues"]:
-            should_ignore = False
-            
-            # Check exact match first
-            issue_key = (
-                issue["title"],
-                issue["category"],
-                issue.get("file_path", ""),
-                issue.get("line_number", 0)
-            )
-            
-            if issue_key in ignored_exact_set:
-                should_ignore = True
-            
-            # Check pattern-based ignore for keywords and domains
-            if not should_ignore:
-                if issue["category"] == "Security Keywords" and ignored_keywords:
-                    keyword = extract_keyword_from_title(issue["title"], issue["category"])
-                    if keyword.lower() in ignored_keywords:
-                        should_ignore = True
-                elif issue["category"] == "Suspicious Domains" and ignored_domains:
-                    domain = extract_keyword_from_title(issue["title"], issue["category"])
-                    if domain.lower() in ignored_domains:
-                        should_ignore = True
-            
-            # Only include if not ignored
-            if not should_ignore:
-                filtered_issues.append(issue)
-                # Count by severity
-                severity = issue["risk_level"].lower()
-                if severity in new_severity_counts:
-                    new_severity_counts[severity] += 1
-                new_total_issues += 1
-        
-        # Only include category if it has non-ignored issues
-        if filtered_issues:
-            category_copy = category.copy()
-            category_copy["issues"] = filtered_issues
-            category_copy["issue_count"] = len(filtered_issues)
-            
-            # Recalculate category risk level based on remaining issues
-            if filtered_issues:
-                category_risk = max([issue["risk_level"] for issue in filtered_issues], 
-                                  key=lambda r: {'CRITICAL': 4, 'HIGH': 3, 'MEDIUM': 2, 'LOW': 1}.get(r, 0))
-                category_copy["risk_level"] = category_risk
-            
-            filtered_categories.append(category_copy)
-    
-    # Create updated report data
-    filtered_report_data = report_data.copy()
-    filtered_report_data["issues"]["categorized"] = filtered_categories
-    filtered_report_data["issues"]["total_count"] = new_total_issues
-    filtered_report_data["metadata"]["total_issues"] = new_total_issues
-    filtered_report_data["summary"]["by_severity"] = new_severity_counts
-    
-    return filtered_report_data
-
-@app.get("/reports/{report_id}", response_class=HTMLResponse)
-async def view_report_page(request: Request, report_id: int):
-    """View detailed security report"""
-    db = SessionLocal()
     try:
         report = db.query(SecurityReport).filter(SecurityReport.id == report_id).first()
         if not report:
-            raise HTTPException(status_code=404, detail="Report not found")
-        
-        if not report.report_data:
-            raise HTTPException(status_code=404, detail="Report data not available")
-        
-        report_data = json.loads(report.report_data)
+            return templates.TemplateResponse("error.html", {
+                "request": request,
+                "error": "Report not found",
+                "current_user": current_user
+            })
         
         # Get ignored issues for this report
         ignored_issues = db.query(IgnoredIssue).filter(
             IgnoredIssue.report_id == report_id
         ).all()
         
-        # Filter out ignored issues from report data
-        filtered_report_data = filter_ignored_issues(report_data, ignored_issues)
+        # Parse report data if it's a string
+        report_data = report.report_data if isinstance(report.report_data, dict) else json.loads(report.report_data)
+        
+        # Filter ignored issues if any exist
+        if ignored_issues:
+            report_data = filter_ignored_issues(report_data, ignored_issues)
         
         return templates.TemplateResponse("view_report.html", {
             "request": request,
             "report": report,
-            "report_data": filtered_report_data,
+            "report_data": report_data,
             "ignored_issues": ignored_issues,
-            "active_page": "reports"
+            "active_page": "reports",
+            "current_user": current_user
         })
-        
     finally:
         db.close()
 
@@ -850,49 +1029,56 @@ async def get_report_data(report_id: int):
         db.close()
 
 @app.get("/reports/{report_id}/pdf")
-async def download_report_pdf(request: Request, report_id: int):
-    """Generate and download PDF report"""
-    db = SessionLocal()
+async def download_report_pdf(
+    request: Request,
+    report_id: int,
+    db: Session = Depends(get_db)
+):
+    """Download report as PDF"""
+    current_user = get_current_user(db, request.cookies.get("token"))
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=303)
+    
     try:
         report = db.query(SecurityReport).filter(SecurityReport.id == report_id).first()
         if not report:
-            raise HTTPException(status_code=404, detail="Report not found")
+            return templates.TemplateResponse("error.html", {
+                "request": request,
+                "error": "Report not found",
+                "current_user": current_user
+            })
         
-        if not report.report_data:
-            raise HTTPException(status_code=404, detail="Report data not available")
-        
-        report_data = json.loads(report.report_data)
-        
-        # Get ignored issues for this report and filter them out
+        # Get ignored issues for this report
         ignored_issues = db.query(IgnoredIssue).filter(
             IgnoredIssue.report_id == report_id
         ).all()
         
-        # Filter out ignored issues from report data
-        filtered_report_data = filter_ignored_issues(report_data, ignored_issues)
+        # Parse report data if it's a string
+        report_data = report.report_data if isinstance(report.report_data, dict) else json.loads(report.report_data)
         
-        # Render HTML template with print-optimized styles
-        html_content = templates.get_template("view_report_pdf.html").render(
-            request=request,
-            report=report,
-            report_data=filtered_report_data
-        )
+        # Filter ignored issues if any exist
+        if ignored_issues:
+            report_data = filter_ignored_issues(report_data, ignored_issues)
         
-        # Generate PDF
-        pdf_buffer = io.BytesIO()
-        weasyprint.HTML(string=html_content, base_url=str(request.url)).write_pdf(pdf_buffer)
-        pdf_buffer.seek(0)
+        # Generate PDF using template
+        html = templates.TemplateResponse("view_report_pdf.html", {
+            "request": request,
+            "report": report,
+            "report_data": report_data,
+            "ignored_issues": ignored_issues,
+            "current_user": current_user
+        }).body.decode()
         
-        # Create filename
-        app_name = filtered_report_data["app_metadata"]["app_name"].replace(" ", "_").replace("/", "_")
-        filename = f"{app_name}_security_report.pdf"
+        # Convert HTML to PDF
+        pdf = weasyprint.HTML(string=html).write_pdf()
         
-        return StreamingResponse(
-            io.BytesIO(pdf_buffer.read()),
-            media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
-        )
-        
+        # Return PDF as download
+        filename = f"security_report_{report.id}_{report.app_name}.pdf"
+        headers = {
+            'Content-Disposition': f'attachment; filename="{filename}"',
+            'Content-Type': 'application/pdf'
+        }
+        return Response(content=pdf, headers=headers)
     finally:
         db.close()
 
@@ -1049,7 +1235,410 @@ async def get_ignored_issues(report_id: int):
     finally:
         db.close()
 
-# Function removed - now using Jinja2 templates
+# Helper functions
+def extract_keyword_from_title(title: str, category: str) -> str:
+    """Extract keyword/domain from issue title for pattern matching"""
+    if category == "Security Keywords" and "Security-Related Keyword: " in title:
+        return title.replace("Security-Related Keyword: ", "").strip()
+    elif category == "Suspicious Domains" and "Suspicious Domain Reference: " in title:
+        return title.replace("Suspicious Domain Reference: ", "").strip()
+    return ""
+
+def filter_ignored_issues(report_data: dict, ignored_issues: List[IgnoredIssue]) -> dict:
+    """Filter out ignored issues from report data and recalculate statistics"""
+    if not ignored_issues:
+        return report_data
+    
+    # Create sets for different types of ignoring
+    ignored_exact_set = set()
+    ignored_keywords = set()
+    ignored_domains = set()
+    
+    for ignored in ignored_issues:
+        if ignored.is_global_ignore and ignored.keyword_pattern:
+            # Global pattern-based ignore
+            if ignored.issue_category == "Security Keywords":
+                ignored_keywords.add(ignored.keyword_pattern.lower())
+            elif ignored.issue_category == "Suspicious Domains":
+                ignored_domains.add(ignored.keyword_pattern.lower())
+        else:
+            # Exact issue ignore
+            ignored_exact_set.add((
+                ignored.issue_title,
+                ignored.issue_category,
+                ignored.issue_file_path,
+                ignored.issue_line_number
+            ))
+    
+    # Filter issues from categorized data
+    filtered_categories = []
+    new_total_issues = 0
+    new_severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+    
+    for category in report_data["issues"]["categorized"]:
+        filtered_issues = []
+        
+        for issue in category["issues"]:
+            should_ignore = False
+            
+            # Check exact match first
+            issue_key = (
+                issue["title"],
+                issue["category"],
+                issue.get("file_path", ""),
+                issue.get("line_number", 0)
+            )
+            
+            if issue_key in ignored_exact_set:
+                should_ignore = True
+            
+            # Check pattern-based ignore for keywords and domains
+            if not should_ignore:
+                if issue["category"] == "Security Keywords" and ignored_keywords:
+                    keyword = extract_keyword_from_title(issue["title"], issue["category"])
+                    if keyword.lower() in ignored_keywords:
+                        should_ignore = True
+                elif issue["category"] == "Suspicious Domains" and ignored_domains:
+                    domain = extract_keyword_from_title(issue["title"], issue["category"])
+                    if domain.lower() in ignored_domains:
+                        should_ignore = True
+            
+            # Only include if not ignored
+            if not should_ignore:
+                filtered_issues.append(issue)
+                # Count by severity
+                severity = issue["risk_level"].lower()
+                if severity in new_severity_counts:
+                    new_severity_counts[severity] += 1
+                new_total_issues += 1
+        
+        # Only include category if it has non-ignored issues
+        if filtered_issues:
+            category_copy = category.copy()
+            category_copy["issues"] = filtered_issues
+            category_copy["issue_count"] = len(filtered_issues)
+            
+            # Recalculate category risk level based on remaining issues
+            if filtered_issues:
+                category_risk = max([issue["risk_level"] for issue in filtered_issues], 
+                                  key=lambda r: {'CRITICAL': 4, 'HIGH': 3, 'MEDIUM': 2, 'LOW': 1}.get(r, 0))
+                category_copy["risk_level"] = category_risk
+            
+            filtered_categories.append(category_copy)
+    
+    # Create updated report data
+    filtered_report_data = report_data.copy()
+    filtered_report_data["issues"]["categorized"] = filtered_categories
+    filtered_report_data["issues"]["total_count"] = new_total_issues
+    filtered_report_data["metadata"]["total_issues"] = new_total_issues
+    filtered_report_data["summary"]["by_severity"] = new_severity_counts
+    
+    return filtered_report_data
+
+def prepare_comparison_data(reports: List[dict]) -> dict:
+    """Prepare data for comparison view"""
+    comparison = {
+        "reports": reports,
+        "summary": {
+            "total_issues": [],
+            "by_severity": {
+                "critical": [],
+                "high": [],
+                "medium": [],
+                "low": []
+            },
+            "by_category": {}
+        },
+        "details": {
+            "by_category": {}
+        }
+    }
+    
+    # Collect all unique categories
+    categories = set()
+    for report in reports:
+        data = report["data"]
+        for issue in data["issues"]["categorized"]:
+            categories.add(issue["category"])
+    
+    # Initialize category counters and details
+    for category in categories:
+        comparison["summary"]["by_category"][category] = []
+        comparison["details"]["by_category"][category] = []
+    
+    # Collect data from each report
+    for report in reports:
+        data = report["data"]
+        
+        # Summary data
+        comparison["summary"]["total_issues"].append(data["metadata"]["total_issues"])
+        comparison["summary"]["by_severity"]["critical"].append(data["summary"]["by_severity"]["critical"])
+        comparison["summary"]["by_severity"]["high"].append(data["summary"]["by_severity"]["high"])
+        comparison["summary"]["by_severity"]["medium"].append(data["summary"]["by_severity"]["medium"])
+        comparison["summary"]["by_severity"]["low"].append(data["summary"]["by_severity"]["low"])
+        
+        # Category counts
+        for category in categories:
+            count = 0
+            issues = []
+            for cat_data in data["issues"]["categorized"]:
+                if cat_data["category"] == category:
+                    count = len(cat_data["issues"])
+                    issues = cat_data["issues"]
+                    break
+            comparison["summary"]["by_category"][category].append(count)
+            comparison["details"]["by_category"][category].append(issues)
+    
+    return comparison
+
+# Submit routes
+@app.get("/submit", response_class=HTMLResponse)
+async def submit_request_page(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """Show analysis submission form"""
+    current_user = get_current_user(db, request.cookies.get("token"))
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    return templates.TemplateResponse("submit_request.html", {
+        "request": request,
+        "active_page": "submit",
+        "current_user": current_user
+    })
+
+@app.post("/submit")
+async def submit_analysis(
+    request: Request,
+    source_type: str = Form(...),
+    project_path: str = Form(None),
+    project_zip: UploadFile = File(None),
+    app_name: str = Form(None),
+    db: Session = Depends(get_db)
+):
+    """Handle form submission for analysis"""
+    current_user = get_current_user(db, request.cookies.get("token"))
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    pending_report = None
+    temp_dir = None
+    
+    try:
+        if source_type == "path":
+            if not project_path:
+                return templates.TemplateResponse("submit_request.html", {
+                    "request": request,
+                    "active_page": "submit",
+                    "errors": {"project_path": "Project path is required"},
+                    "form_data": {"project_path": project_path, "app_name": app_name},
+                    "current_user": current_user
+                })
+            
+            # Validate project path exists
+            if not os.path.exists(project_path):
+                return templates.TemplateResponse("submit_request.html", {
+                    "request": request,
+                    "active_page": "submit",
+                    "errors": {"project_path": "Project path does not exist"},
+                    "form_data": {"project_path": project_path, "app_name": app_name},
+                    "current_user": current_user
+                })
+            
+            analysis_path = project_path
+            
+        else:  # source_type == "zip"
+            if not project_zip:
+                return templates.TemplateResponse("submit_request.html", {
+                    "request": request,
+                    "active_page": "submit",
+                    "errors": {"project_zip": "ZIP file is required"},
+                    "form_data": {"app_name": app_name},
+                    "current_user": current_user
+                })
+            
+            # Create temporary directory with unique name
+            temp_dir = tempfile.mkdtemp(prefix="android_security_analysis_")
+            
+            try:
+                # Save and extract ZIP file
+                zip_path = os.path.join(temp_dir, "project.zip")
+                with open(zip_path, "wb") as buffer:
+                    shutil.copyfileobj(project_zip.file, buffer)
+                
+                # Extract ZIP
+                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                    zip_ref.extractall(temp_dir)
+                os.remove(zip_path)  # Remove the ZIP file after extraction
+                
+                # Find the actual project root
+                analysis_path = _find_project_root(temp_dir)
+                
+                if analysis_path == temp_dir:
+                    # No clear Android project structure found
+                    shutil.rmtree(temp_dir)
+                    return templates.TemplateResponse("submit_request.html", {
+                        "request": request,
+                        "active_page": "submit",
+                        "errors": {"project_zip": "Could not find Android project structure in ZIP file"},
+                        "form_data": {"app_name": app_name},
+                        "current_user": current_user
+                    })
+                
+            except zipfile.BadZipFile:
+                if temp_dir and os.path.exists(temp_dir):
+                    shutil.rmtree(temp_dir)
+                return templates.TemplateResponse("submit_request.html", {
+                    "request": request,
+                    "active_page": "submit",
+                    "errors": {"project_zip": "Invalid ZIP file"},
+                    "form_data": {"app_name": app_name},
+                    "current_user": current_user
+                })
+            except Exception as e:
+                if temp_dir and os.path.exists(temp_dir):
+                    shutil.rmtree(temp_dir)
+                return templates.TemplateResponse("submit_request.html", {
+                    "request": request,
+                    "active_page": "submit",
+                    "errors": {"project_zip": f"Error extracting ZIP file: {str(e)}"},
+                    "form_data": {"app_name": app_name},
+                    "current_user": current_user
+                })
+        
+        # Run analysis
+        from android_security_analyzer import AndroidSecurityAnalyzer
+        
+        # Create pending record
+        pending_report = SecurityReport(
+            app_name=app_name or "Unknown",
+            package_name="Unknown",
+            version="Unknown",
+            project_path=analysis_path,
+            status="in_progress",
+            total_issues=0
+        )
+        db.add(pending_report)
+        db.commit()
+        db.refresh(pending_report)
+        
+        # Get the ID after commit and refresh
+        report_id = pending_report.id
+        
+        try:
+            # Run analysis
+            analyzer = AndroidSecurityAnalyzer(analysis_path)
+            analysis_result = await analyzer.analyze_async(analysis_path)
+            report_data = analyzer.report_generator.prepare_json_data(analysis_result)
+            
+            # Update database record with results
+            pending_report = db.query(SecurityReport).filter(SecurityReport.id == report_id).first()
+            if pending_report:
+                pending_report.app_name = report_data["app_metadata"]["app_name"]
+                pending_report.package_name = report_data["app_metadata"]["package_name"]
+                pending_report.version = report_data["app_metadata"]["version_name"]
+                pending_report.total_issues = report_data["metadata"]["total_issues"]
+                pending_report.critical_issues = report_data["summary"]["by_severity"]["critical"]
+                pending_report.high_issues = report_data["summary"]["by_severity"]["high"]
+                pending_report.medium_issues = report_data["summary"]["by_severity"]["medium"]
+                pending_report.low_issues = report_data["summary"]["by_severity"]["low"]
+                pending_report.app_logo = report_data["app_metadata"].get("app_logo_base64", "")
+                pending_report.status = "completed"
+                pending_report.report_data = report_data
+                
+                db.commit()
+                
+                # Clean up temp directory if used
+                if temp_dir and os.path.exists(temp_dir):
+                    shutil.rmtree(temp_dir)
+                
+                # Redirect to report view
+                return RedirectResponse(url=f"/reports/{report_id}", status_code=303)
+            else:
+                raise Exception("Could not find pending report after creation")
+                
+        except Exception as e:
+            # Clean up temp directory if used
+            if temp_dir and os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
+            
+            # Mark report as failed
+            if pending_report and hasattr(pending_report, 'id'):
+                try:
+                    failed_report = db.query(SecurityReport).filter(SecurityReport.id == pending_report.id).first()
+                    if failed_report:
+                        failed_report.status = "failed"
+                        db.commit()
+                except Exception:
+                    pass  # Don't let cleanup errors override the main error
+            
+            return templates.TemplateResponse("submit_request.html", {
+                "request": request,
+                "active_page": "submit",
+                "form_data": {"project_path": project_path, "app_name": app_name},
+                "messages": [("error", f"Analysis failed: {str(e)}")],
+                "current_user": current_user
+            })
+            
+    except Exception as e:
+        # Clean up temp directory if used
+        if temp_dir and os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
+        
+        # Mark report as failed if it exists
+        if pending_report and hasattr(pending_report, 'id'):
+            try:
+                failed_report = db.query(SecurityReport).filter(SecurityReport.id == pending_report.id).first()
+                if failed_report:
+                    failed_report.status = "failed"
+                    db.commit()
+            except Exception:
+                pass  # Don't let cleanup errors override the main error
+        
+        return templates.TemplateResponse("submit_request.html", {
+            "request": request,
+            "active_page": "submit",
+            "form_data": {"project_path": project_path, "app_name": app_name},
+            "messages": [("error", f"Analysis failed: {str(e)}")],
+            "current_user": current_user
+        })
+
+def _find_project_root(temp_dir: str) -> str:
+    """Find the actual project root directory in the extracted contents"""
+    # Look for key Android project files/directories
+    android_indicators = [
+        'app/build.gradle',
+        'app/build.gradle.kts',
+        'build.gradle',
+        'build.gradle.kts',
+        'gradlew',
+        'settings.gradle',
+        'settings.gradle.kts',
+        'app/src/main/AndroidManifest.xml'
+    ]
+    
+    # First check if any indicators exist in the temp directory itself
+    if any(os.path.exists(os.path.join(temp_dir, indicator)) for indicator in android_indicators):
+        return temp_dir
+    
+    # Check immediate subdirectories
+    for item in os.listdir(temp_dir):
+        item_path = os.path.join(temp_dir, item)
+        if os.path.isdir(item_path):
+            # Check if this directory has any of the Android project indicators
+            if any(os.path.exists(os.path.join(item_path, indicator)) for indicator in android_indicators):
+                return item_path
+            
+            # Check one level deeper (for cases where the project is in a subdirectory)
+            for subitem in os.listdir(item_path):
+                subitem_path = os.path.join(item_path, subitem)
+                if os.path.isdir(subitem_path):
+                    if any(os.path.exists(os.path.join(subitem_path, indicator)) for indicator in android_indicators):
+                        return subitem_path
+    
+    # If no clear Android project structure is found, return the temp directory
+    return temp_dir
 
 if __name__ == "__main__":
     import uvicorn

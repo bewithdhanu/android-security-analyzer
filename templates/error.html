@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}Error - Android Security Analyzer{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto space-y-4">
+    <!-- Error Message -->
+    <div class="bg-error/10 rounded-lg border border-error/20 p-6">
+        <div class="flex items-start">
+            <div class="flex-shrink-0">
+                <i class="fas fa-exclamation-circle text-error text-xl"></i>
+            </div>
+            <div class="ml-3">
+                <h3 class="text-lg font-medium text-error">Error</h3>
+                <div class="mt-2 text-error/80">
+                    <p>{{ error }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Back Button -->
+    <div class="flex justify-end">
+        <a href="{{ url_for('list_users') }}" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded font-medium transition-colors">
+            Back to Users
+        </a>
+    </div>
+</div>
+{% endblock %} 
