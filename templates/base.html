@@ -4,8 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Android Security Analyzer{% endblock %}</title>
+    
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -27,50 +28,16 @@
             }
         }
     </script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-        * { font-family: 'Inter', sans-serif; }
-        
-        .severity-critical { @apply bg-critical text-white; }
-        .severity-high { @apply bg-high text-white; }
-        .severity-medium { @apply bg-medium text-white; }
-        .severity-low { @apply bg-low text-white; }
-        
-        .status-completed { @apply bg-success text-white; }
-        .status-in_progress { @apply bg-warning text-white; }
-        .status-failed { @apply bg-error text-white; }
-        .status-pending { @apply bg-secondary text-white; }
-        
-        .flash-success { @apply bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-700 dark:text-green-300; }
-        .flash-error { @apply bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-700 dark:text-red-300; }
-        .flash-warning { @apply bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-700 dark:text-yellow-300; }
-        .flash-info { @apply bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-700 dark:text-blue-300; }
-        
-        .animate-spin { animation: spin 1s linear infinite; }
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        
-        .code-block { @apply bg-gray-900 text-gray-100 p-2 rounded text-sm font-mono overflow-x-auto; }
-        .table-row-hover { @apply hover:bg-gray-800/50 transition-colors; }
-        
-        .expand-icon { transition: transform 0.2s; }
-        .expand-icon.expanded { transform: rotate(90deg); }
-        
-        .modal-backdrop { @apply fixed inset-0 bg-black bg-opacity-50 z-40; }
-        .modal-content { @apply fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50; }
-        
-        .gradient-bg { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); }
-        .card-hover { @apply hover:shadow-lg hover:shadow-blue-500/10 transition-all duration-200; }
-        
-        .btn-primary { @apply bg-primary hover:bg-blue-600 text-white px-3 py-1.5 rounded text-sm font-medium transition-colors; }
-        .btn-secondary { @apply bg-secondary hover:bg-slate-600 text-white px-3 py-1.5 rounded text-sm font-medium transition-colors; }
-        .btn-success { @apply bg-success hover:bg-green-600 text-white px-3 py-1.5 rounded text-sm font-medium transition-colors; }
-        .btn-warning { @apply bg-warning hover:bg-yellow-600 text-white px-3 py-1.5 rounded text-sm font-medium transition-colors; }
-        .btn-danger { @apply bg-error hover:bg-red-600 text-white px-3 py-1.5 rounded text-sm font-medium transition-colors; }
-        .btn-small { @apply px-2 py-1 text-xs; }
-        
-        .loading-overlay { @apply fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50; }
-        .loading-spinner { @apply animate-spin text-4xl text-white; }
-    </style>
+    
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <!-- Custom CSS -->
+    <link href="{{ url_for('static', path='css/style.css') }}" rel="stylesheet">
+    
+    <!-- Custom JavaScript -->
+    <script src="{{ url_for('static', path='js/app.js') }}" defer></script>
+    
     {% block extra_head %}{% endblock %}
 </head>
 <body class="bg-gray-900 text-gray-100 min-h-screen">
@@ -118,102 +85,6 @@
         </div>
     </div>
 
-    <!-- Base JavaScript -->
-    <script>
-        // Global utility functions
-        window.AppUtils = {
-            showLoading() {
-                document.getElementById('loading-overlay').classList.remove('hidden');
-            },
-            
-            hideLoading() {
-                document.getElementById('loading-overlay').classList.add('hidden');
-            },
-            
-            showFlash(type, message) {
-                const container = document.getElementById('flash-container');
-                const flash = document.createElement('div');
-                flash.className = `flash-${type} border-l-4 p-3 rounded shadow-lg max-w-md`;
-                flash.innerHTML = `
-                    <div class="flex items-center justify-between">
-                        <div class="flex items-center space-x-2">
-                            <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-triangle' : 'info-circle'} text-sm"></i>
-                            <span class="text-sm font-medium">${message}</span>
-                        </div>
-                        <button onclick="this.parentElement.parentElement.remove()" class="text-sm opacity-60 hover:opacity-100">
-                            <i class="fas fa-times"></i>
-                        </button>
-                    </div>
-                `;
-                container.appendChild(flash);
-                
-                setTimeout(() => {
-                    if (flash.parentElement) flash.remove();
-                }, 5000);
-            },
-            
-            async apiRequest(url, options = {}) {
-                try {
-                    const response = await fetch(url, {
-                        headers: { 'Content-Type': 'application/json' },
-                        ...options
-                    });
-                    
-                    if (!response.ok) {
-                        const error = await response.json().catch(() => ({}));
-                        throw new Error(error.detail || `HTTP ${response.status}`);
-                    }
-                    
-                    return await response.json();
-                } catch (error) {
-                    this.showFlash('error', error.message);
-                    throw error;
-                }
-            },
-            
-            toggleElement(id) {
-                const element = document.getElementById(id);
-                const icon = element.previousElementSibling.querySelector('.expand-icon');
-                
-                element.classList.toggle('hidden');
-                icon.classList.toggle('expanded');
-            },
-            
-            formatDate(dateString) {
-                return new Date(dateString).toLocaleString();
-            },
-            
-            debounce(func, wait) {
-                let timeout;
-                return function executedFunction(...args) {
-                    const later = () => {
-                        clearTimeout(timeout);
-                        func(...args);
-                    };
-                    clearTimeout(timeout);
-                    timeout = setTimeout(later, wait);
-                };
-            }
-        };
-        
-        // Initialize app
-        document.addEventListener('DOMContentLoaded', function() {
-            // Auto-hide flash messages
-            document.querySelectorAll('[class*="flash-"]').forEach(flash => {
-                setTimeout(() => flash.remove(), 5000);
-            });
-            
-            // Keyboard shortcuts
-            document.addEventListener('keydown', function(e) {
-                if (e.key === 'Escape') {
-                    document.querySelectorAll('.modal-backdrop').forEach(modal => {
-                        modal.classList.add('hidden');
-                    });
-                }
-            });
-        });
-    </script>
-    
     {% block extra_scripts %}{% endblock %}
 </body>
 </html>

@@ -1,0 +1,107 @@
+/* Base Styles */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+* { font-family: 'Inter', sans-serif; }
+
+/* Severity Colors */
+.severity-critical { @apply bg-critical text-white; }
+.severity-high { @apply bg-high text-white; }
+.severity-medium { @apply bg-medium text-white; }
+.severity-low { @apply bg-low text-white; }
+
+/* Status Colors */
+.status-completed { @apply bg-success text-white; }
+.status-in_progress { @apply bg-warning text-white; }
+.status-failed { @apply bg-error text-white; }
+.status-pending { @apply bg-secondary text-white; }
+
+/* Flash Messages */
+.flash-success { @apply bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-700 dark:text-green-300; }
+.flash-error { @apply bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-700 dark:text-red-300; }
+.flash-warning { @apply bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-700 dark:text-yellow-300; }
+.flash-info { @apply bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-700 dark:text-blue-300; }
+
+/* Animations */
+.animate-spin { animation: spin 1s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+/* Code Blocks */
+.code-block { @apply bg-gray-900 text-gray-100 p-2 rounded text-sm font-mono overflow-x-auto; }
+.table-row-hover { @apply hover:bg-gray-800/50 transition-colors; }
+
+/* Expand Icons */
+.expand-icon { transition: transform 0.2s; }
+.expand-icon.expanded { transform: rotate(90deg); }
+
+/* Modal Styles */
+.modal-backdrop { @apply fixed inset-0 bg-black bg-opacity-50 z-40; }
+.modal-content { @apply fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50; }
+
+/* Gradients */
+.gradient-bg { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); }
+.card-hover { @apply hover:shadow-lg hover:shadow-blue-500/10 transition-all duration-200; }
+
+/* Buttons */
+.btn-primary { @apply bg-primary hover:bg-blue-600 text-white px-3 py-1.5 rounded text-sm font-medium transition-colors; }
+.btn-secondary { @apply bg-secondary hover:bg-slate-600 text-white px-3 py-1.5 rounded text-sm font-medium transition-colors; }
+.btn-success { @apply bg-success hover:bg-green-600 text-white px-3 py-1.5 rounded text-sm font-medium transition-colors; }
+.btn-warning { @apply bg-warning hover:bg-yellow-600 text-white px-3 py-1.5 rounded text-sm font-medium transition-colors; }
+.btn-danger { @apply bg-error hover:bg-red-600 text-white px-3 py-1.5 rounded text-sm font-medium transition-colors; }
+.btn-small { @apply px-2 py-1 text-xs; }
+
+/* Loading Overlay */
+.loading-overlay { @apply fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50; }
+.loading-spinner { @apply animate-spin text-4xl text-white; }
+
+/* File Upload */
+.drop-zone {
+    @apply border-2 border-dashed border-gray-600 rounded-lg p-12 text-center cursor-pointer transition-all duration-200;
+}
+
+.drop-zone:hover,
+.drop-zone.drag-over {
+    @apply border-primary bg-primary/5;
+}
+
+.file-info {
+    @apply mt-6 text-gray-400 transition-all duration-200;
+}
+
+.file-info.visible {
+    @apply opacity-100;
+}
+
+.file-info.hidden {
+    @apply opacity-0;
+}
+
+/* Upload Progress */
+.upload-progress {
+    @apply mt-4 transition-all duration-200;
+}
+
+.progress-bar {
+    @apply bg-primary h-full rounded-full transition-all duration-300;
+}
+
+/* OR Divider */
+.divider {
+    @apply relative my-8;
+}
+
+.divider::before {
+    content: '';
+    @apply absolute inset-0 flex items-center;
+}
+
+.divider::after {
+    content: '';
+    @apply w-full border-t border-gray-600;
+}
+
+.divider-text {
+    @apply relative flex justify-center text-sm;
+}
+
+.divider-text span {
+    @apply px-4 bg-gray-800 text-gray-400;
+} 

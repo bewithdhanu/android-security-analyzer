@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request, Form, Depends
+from fastapi import FastAPI, HTTPException, Request, Form, Depends, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -12,6 +12,14 @@ from datetime import datetime
 import json
 import os
 from typing import List, Optional
+import shutil
+import tempfile
+import zipfile
+from pathlib import Path
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
+from fastapi.middleware.cors import CORSMiddleware
 
 # Database setup
 SQLITE_DATABASE_URL = "sqlite:///./security_reports.db"
@@ -138,8 +146,39 @@ class AnalysisRequest(BaseModel):
     app_name: Optional[str] = None
 
 # FastAPI app
-app = FastAPI(title="Android Security Analyzer API", version="1.0.0")
+app = FastAPI(
+    title="Android Security Analyzer API",
+    version="1.0.0"
+)
+
+# Configure maximum upload size to 1GB
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Configure maximum request size to 1GB
+app = FastAPI(
+    title="Android Security Analyzer API",
+    version="1.0.0"
+)
 templates = Jinja2Templates(directory="templates")
+
+# Increase maximum upload size to 1GB
+class LargeUploadMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if request.method == "POST" and "multipart/form-data" in request.headers.get("content-type", ""):
+            # Set max upload size to 1GB
+            request._max_body_size = 1024 * 1024 * 1024  # 1GB in bytes
+        return await call_next(request)
+
+app.add_middleware(LargeUploadMiddleware)
+
+# Mount static files
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 # Dependency to get DB session
@@ -240,38 +279,130 @@ async def submit_request_page(request: Request):
     finally:
         db.close()
 
+def _find_project_root(temp_dir: str) -> str:
+    """Find the actual project root directory in the extracted contents"""
+    # Look for key Android project files/directories
+    android_indicators = [
+        'app/build.gradle',
+        'app/build.gradle.kts',
+        'build.gradle',
+        'build.gradle.kts',
+        'gradlew',
+        'settings.gradle',
+        'settings.gradle.kts',
+        'app/src/main/AndroidManifest.xml'
+    ]
+    
+    # First check if any indicators exist in the temp directory itself
+    if any(os.path.exists(os.path.join(temp_dir, indicator)) for indicator in android_indicators):
+        return temp_dir
+    
+    # Check immediate subdirectories
+    for item in os.listdir(temp_dir):
+        item_path = os.path.join(temp_dir, item)
+        if os.path.isdir(item_path):
+            # Check if this directory has any of the Android project indicators
+            if any(os.path.exists(os.path.join(item_path, indicator)) for indicator in android_indicators):
+                return item_path
+            
+            # Check one level deeper (for cases where the project is in a subdirectory)
+            for subitem in os.listdir(item_path):
+                subitem_path = os.path.join(item_path, subitem)
+                if os.path.isdir(subitem_path):
+                    if any(os.path.exists(os.path.join(subitem_path, indicator)) for indicator in android_indicators):
+                        return subitem_path
+    
+    # If no clear Android project structure is found, return the temp directory
+    return temp_dir
+
 @app.post("/submit")
 async def submit_analysis(
     request: Request,
-    project_path: str = Form(...),
+    source_type: str = Form(...),
+    project_path: str = Form(None),
+    project_zip: UploadFile = File(None),
     app_name: str = Form(None)
 ):
     """Handle form submission for analysis"""
     db = None
     pending_report = None
+    temp_dir = None
     
     try:
-        # Submit analysis request via API
-        analysis_request = AnalysisRequest(
-            project_path=project_path,
-            app_name=app_name
-        )
-        
-        # Validate project path
-        if not os.path.exists(project_path):
-            db = SessionLocal()
-            recent_projects = db.query(SecurityReport)\
-                .filter(SecurityReport.status == "completed")\
-                .order_by(SecurityReport.scan_time.desc())\
-                .limit(5).all()
+        if source_type == "path":
+            if not project_path:
+                return templates.TemplateResponse("submit_request.html", {
+                    "request": request,
+                    "active_page": "submit",
+                    "errors": {"project_path": "Project path is required"},
+                    "form_data": {"project_path": project_path, "app_name": app_name}
+                })
+            
+            # Validate project path exists
+            if not os.path.exists(project_path):
+                return templates.TemplateResponse("submit_request.html", {
+                    "request": request,
+                    "active_page": "submit",
+                    "errors": {"project_path": "Project path does not exist"},
+                    "form_data": {"project_path": project_path, "app_name": app_name}
+                })
+            
+            analysis_path = project_path
+            
+        else:  # source_type == "zip"
+            if not project_zip:
+                return templates.TemplateResponse("submit_request.html", {
+                    "request": request,
+                    "active_page": "submit",
+                    "errors": {"project_zip": "ZIP file is required"},
+                    "form_data": {"app_name": app_name}
+                })
+            
+            # Create temporary directory with unique name
+            temp_dir = tempfile.mkdtemp(prefix="android_security_analysis_")
+            
+            try:
+                # Save and extract ZIP file
+                zip_path = os.path.join(temp_dir, "project.zip")
+                with open(zip_path, "wb") as buffer:
+                    shutil.copyfileobj(project_zip.file, buffer)
                 
-            return templates.TemplateResponse("submit_request.html", {
-                "request": request,
-                "active_page": "submit",
-                "form_data": {"project_path": project_path, "app_name": app_name},
-                "errors": {"project_path": "Project path does not exist"},
-                "recent_projects": recent_projects
-            })
+                # Extract ZIP
+                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                    zip_ref.extractall(temp_dir)
+                os.remove(zip_path)  # Remove the ZIP file after extraction
+                
+                # Find the actual project root
+                analysis_path = _find_project_root(temp_dir)
+                
+                if analysis_path == temp_dir:
+                    # No clear Android project structure found
+                    shutil.rmtree(temp_dir)
+                    return templates.TemplateResponse("submit_request.html", {
+                        "request": request,
+                        "active_page": "submit",
+                        "errors": {"project_zip": "Could not find Android project structure in ZIP file"},
+                        "form_data": {"app_name": app_name}
+                    })
+                
+            except zipfile.BadZipFile:
+                if temp_dir and os.path.exists(temp_dir):
+                    shutil.rmtree(temp_dir)
+                return templates.TemplateResponse("submit_request.html", {
+                    "request": request,
+                    "active_page": "submit",
+                    "errors": {"project_zip": "Invalid ZIP file"},
+                    "form_data": {"app_name": app_name}
+                })
+            except Exception as e:
+                if temp_dir and os.path.exists(temp_dir):
+                    shutil.rmtree(temp_dir)
+                return templates.TemplateResponse("submit_request.html", {
+                    "request": request,
+                    "active_page": "submit",
+                    "errors": {"project_zip": f"Error extracting ZIP file: {str(e)}"},
+                    "form_data": {"app_name": app_name}
+                })
         
         # Run analysis
         from android_security_analyzer import AndroidSecurityAnalyzer
@@ -282,7 +413,7 @@ async def submit_analysis(
             app_name=app_name or "Unknown",
             package_name="Unknown",
             version="Unknown",
-            project_path=project_path,
+            project_path=analysis_path,
             status="in_progress",
             total_issues=0
         )
@@ -293,34 +424,66 @@ async def submit_analysis(
         # Get the ID after commit and refresh
         report_id = pending_report.id
         
-        # Run analysis
-        analyzer = AndroidSecurityAnalyzer(project_path)
-        analysis_result = await analyzer.analyze_async(project_path)
-        report_data = analyzer.report_generator.prepare_json_data(analysis_result)
-        
-        # Update database record with results - use a fresh query to avoid stale data
-        pending_report = db.query(SecurityReport).filter(SecurityReport.id == report_id).first()
-        if pending_report:
-            pending_report.app_name = report_data["app_metadata"]["app_name"]
-            pending_report.package_name = report_data["app_metadata"]["package_name"]
-            pending_report.version = report_data["app_metadata"]["version_name"]
-            pending_report.total_issues = report_data["metadata"]["total_issues"]
-            pending_report.critical_issues = report_data["summary"]["by_severity"]["critical"]
-            pending_report.high_issues = report_data["summary"]["by_severity"]["high"]
-            pending_report.medium_issues = report_data["summary"]["by_severity"]["medium"]
-            pending_report.low_issues = report_data["summary"]["by_severity"]["low"]
-            pending_report.app_logo = report_data["app_metadata"].get("app_logo_base64", "")
-            pending_report.status = "completed"
-            pending_report.report_data = json.dumps(report_data)
+        try:
+            # Run analysis
+            analyzer = AndroidSecurityAnalyzer(analysis_path)
+            analysis_result = await analyzer.analyze_async(analysis_path)
+            report_data = analyzer.report_generator.prepare_json_data(analysis_result)
             
-            db.commit()
+            # Update database record with results
+            pending_report = db.query(SecurityReport).filter(SecurityReport.id == report_id).first()
+            if pending_report:
+                pending_report.app_name = report_data["app_metadata"]["app_name"]
+                pending_report.package_name = report_data["app_metadata"]["package_name"]
+                pending_report.version = report_data["app_metadata"]["version_name"]
+                pending_report.total_issues = report_data["metadata"]["total_issues"]
+                pending_report.critical_issues = report_data["summary"]["by_severity"]["critical"]
+                pending_report.high_issues = report_data["summary"]["by_severity"]["high"]
+                pending_report.medium_issues = report_data["summary"]["by_severity"]["medium"]
+                pending_report.low_issues = report_data["summary"]["by_severity"]["low"]
+                pending_report.app_logo = report_data["app_metadata"].get("app_logo_base64", "")
+                pending_report.status = "completed"
+                pending_report.report_data = json.dumps(report_data)
+                
+                db.commit()
+                
+                # Clean up temp directory if used
+                if temp_dir and os.path.exists(temp_dir):
+                    shutil.rmtree(temp_dir)
+                
+                # Redirect to report view
+                return RedirectResponse(url=f"/reports/{report_id}", status_code=303)
+            else:
+                raise Exception("Could not find pending report after creation")
+                
+        except Exception as e:
+            # Clean up temp directory if used
+            if temp_dir and os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
             
-            # Redirect to report view
-            return RedirectResponse(url=f"/reports/{report_id}", status_code=303)
-        else:
-            raise Exception("Could not find pending report after creation")
+            # Mark report as failed
+            if pending_report and hasattr(pending_report, 'id'):
+                try:
+                    if db:
+                        failed_report = db.query(SecurityReport).filter(SecurityReport.id == pending_report.id).first()
+                        if failed_report:
+                            failed_report.status = "failed"
+                            db.commit()
+                except Exception:
+                    pass  # Don't let cleanup errors override the main error
+            
+            return templates.TemplateResponse("submit_request.html", {
+                "request": request,
+                "active_page": "submit",
+                "form_data": {"project_path": project_path, "app_name": app_name},
+                "messages": [("error", f"Analysis failed: {str(e)}")],
+            })
             
     except Exception as e:
+        # Clean up temp directory if used
+        if temp_dir and os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
+        
         # Mark report as failed if it exists
         if pending_report and hasattr(pending_report, 'id'):
             try:
@@ -332,24 +495,11 @@ async def submit_analysis(
             except Exception:
                 pass  # Don't let cleanup errors override the main error
         
-        # Get recent projects for error page
-        recent_projects = []
-        try:
-            db_temp = SessionLocal()
-            recent_projects = db_temp.query(SecurityReport)\
-                .filter(SecurityReport.status == "completed")\
-                .order_by(SecurityReport.scan_time.desc())\
-                .limit(5).all()
-            db_temp.close()
-        except Exception:
-            pass
-        
         return templates.TemplateResponse("submit_request.html", {
             "request": request,
             "active_page": "submit",
             "form_data": {"project_path": project_path, "app_name": app_name},
             "messages": [("error", f"Analysis failed: {str(e)}")],
-            "recent_projects": recent_projects
         })
     finally:
         if db:
