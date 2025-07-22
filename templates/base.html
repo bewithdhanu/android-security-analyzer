@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Android Security Analyzer{% endblock %}</title>
+    <title>{% block title %}Mobile Security Analyzer{% endblock %}</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', path='images/favicon.svg') }}">
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -44,9 +47,9 @@
     <!-- Navigation -->
     <nav class="bg-gray-800 border-b border-gray-700 px-4 py-2">
         <div class="max-w-7xl mx-auto flex items-center justify-between">
-            <div class="flex items-center space-x-2">
-                <i class="fas fa-shield-alt text-primary text-xl"></i>
-                <span class="text-lg font-semibold text-white">Android Security Analyzer</span>
+            <div class="flex items-center space-x-3">
+                <img src="{{ url_for('static', path='images/logo.svg') }}" alt="Logo" class="w-8 h-8">
+                <span class="text-lg font-semibold text-white">Mobile Security Analyzer</span>
             </div>
             <div class="flex items-center space-x-4">
                 <a href="{{ url_for('list_reports') }}" class="flex items-center space-x-1 px-3 py-1 rounded text-sm hover:bg-gray-700 transition-colors {% if active_page == 'reports' %}bg-gray-700 text-primary{% else %}text-gray-300{% endif %}">
